@@ -7,6 +7,7 @@ import { $, h, icon, store, toast, initials, fill } from './lib/dom.js';
 import { fb, initFirebase, onSession, signOut, isStaff, getSettings, fs, saveProfile } from './services/firebase.js';
 import { student, logVisit } from './services/student.js';
 import { openQuickSearch } from './views/quicksearch.js';
+import { loadBackend } from './services/backend.js';
 
 const ROUTES = [
   { re: /^\/?$/, view: () => import('./views/home.js'), nav: 'home' },
@@ -18,13 +19,14 @@ const ROUTES = [
   { re: /^\/my\/?$/, view: () => import('./views/my.js'), nav: 'my', auth: true },
   { re: /^\/profile\/?$/, view: () => import('./views/profile.js'), nav: 'my', auth: true },
   { re: /^\/admin(?:\/(\w+))?(?:\/([\w-]+))?\/?$/, view: () => import('./views/admin.js'), nav: 'admin', staff: true },
-  { re: /^\/about\/?$/, view: () => import('./views/about.js'), nav: 'about' }
+  { re: /^\/about\/?$/, view: () => import('./views/about.js'), nav: 'about' },
+  { re: /^\/signin\/?$/, view: () => import('./views/signin.js'), nav: 'signin' }
 ];
 
 const NAV = [
-  { key: 'home', href: '#/', label: 'Browse', ic: 'layers' },
+  { key: 'home', href: '#/', label: 'Home', ic: 'home' },
   { key: 'search', href: '#/search', label: 'Search', ic: 'search' },
-  { key: 'submit', href: '#/submit', label: 'Contribute', ic: 'upload' },
+  { key: 'submit', href: '#/submit', label: 'Upload', ic: 'upload' },
   { key: 'my', href: '#/my', label: 'My uploads', ic: 'inbox', auth: true },
   { key: 'admin', href: '#/admin', label: 'Dashboard', ic: 'shield', staff: true }
 ];
@@ -58,9 +60,11 @@ async function render() {
   cleanup = null;
   drawNav(route.nav);
 
-  if (route.auth && !fb.user) return guard('Sign in to continue', 'Contributing and tracking your uploads needs a Google account, so reviewers know who to credit.');
-  if (route.staff && !isStaff()) return guard('Staff only', 'The dashboard is for archive reviewers and administrators.', !!fb.user);
+  if (route.auth && !fb.user) return guard(path, 'contributor', token);
+  if (route.staff && !isStaff()) return guard(path, fb.user ? 'not-staff' : 'staff', token);
 
+  // the upload-service URL may come from config/settings (one cached read; never hold the page for long)
+  if (fb.ready) await Promise.race([loadBackend(), new Promise((r) => setTimeout(r, 2500))]);
   const mod = await route.view();
   if (token !== routeToken) return;
   const swap = async () => {
@@ -76,14 +80,11 @@ async function render() {
   else window.scrollTo({ top: 0 });
 }
 
-function guard(title, text, signedIn = false) {
-  fill(view, h('section', { class: 'page narrow center-page' },
-    h('div', { class: 'card glass guard' },
-      h('div', { class: 'empty-ic' }, icon(signedIn ? 'lock' : 'user')),
-      h('h2', { text: title }), h('p', { class: 'muted', text }),
-      signedIn ? h('a', { class: 'btn btn-ghost', href: '#/', text: 'Back to the archive' })
-        : fb.ready ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => import('./views/gate.js').then((g) => g.startSignIn()) }, icon('user'), 'Sign in with Google')
-          : h('p', { class: 'muted small', text: 'Sign-in is unavailable right now.' }))));
+/** Sign-in prompt (or "not on the team" notice) shown in place of a protected page. */
+async function guard(path, kind, token) {
+  const { signInPanel } = await import('./views/signin.js');
+  if (token !== routeToken) return;
+  fill(view, h('section', { class: 'page narrow center-page' }, signInPanel({ kind, next: path })));
 }
 
 /* ---------- header ---------- */
@@ -98,40 +99,48 @@ function drawNav(active) {
 
 function drawAccount() {
   const box = $('#account');
-  if (!fb.user) return drawStudentAccount(box);
+  if (!fb.user) return drawGuestAccount(box);
   const name = fb.profile?.displayName || fb.user.displayName || fb.user.email;
   const avatar = fb.user.photoURL
     ? h('img', { src: fb.user.photoURL, alt: '', referrerpolicy: 'no-referrer', onerror: (e) => e.target.replaceWith(h('span', { class: 'avatar-txt', text: initials(name) })) })
     : h('span', { class: 'avatar-txt', text: initials(name) });
-  const menu = h('div', { class: 'menu glass', role: 'menu', hidden: true },
+  const menu = h('div', { class: 'menu', role: 'menu', hidden: true },
     h('div', { class: 'menu-head' }, h('strong', { text: name }), h('span', { text: fb.user.email }),
-      fb.role ? h('span', { class: 'pill pill-ok', text: fb.role }) : null),
-    h('a', { href: '#/profile', role: 'menuitem' }, icon('user'), 'Profile'),
-    h('a', { href: '#/my', role: 'menuitem' }, icon('inbox'), 'My uploads'),
+      fb.role ? h('span', { class: 'pill pill-ok' }, icon('shield'), ROLE_LABEL[fb.role] || fb.role) : null),
     isStaff() ? h('a', { href: '#/admin', role: 'menuitem' }, icon('shield'), 'Dashboard') : null,
+    h('a', { href: '#/submit', role: 'menuitem' }, icon('upload'), 'Upload material'),
+    h('a', { href: '#/my', role: 'menuitem' }, icon('inbox'), 'My uploads'),
+    h('a', { href: '#/profile', role: 'menuitem' }, icon('user'), 'Profile'),
+    h('hr'),
     h('button', { type: 'button', role: 'menuitem', onclick: () => signOut().then(() => toast('Signed out', 'ok')) }, icon('logout'), 'Sign out'));
-  const btn = h('button', { class: 'avatar', type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Account menu' }, avatar);
-  const toggle = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
-  btn.onclick = (e) => { e.stopPropagation(); toggle(menu.hidden); };
-  closeAccountMenu = (e) => { if (!menu.hidden && !menu.contains(e.target)) toggle(false); };
-  menu.addEventListener('click', (e) => { if (e.target.closest('a,button')) toggle(false); });
-  fill(box, btn, menu);
+  fill(box, ...accountMenu(avatar, menu, 'Account menu'));
 }
 
-/** Header menu for a student who came in with their ID (no Google account). */
-function drawStudentAccount(box) {
+const ROLE_LABEL = { owner: 'Owner', admin: 'Editor (admin)', reviewer: 'Reviewer' };
+
+/** Not signed in with Google: a visible Sign in button, plus the student's own menu if they entered with an ID. */
+function drawGuestAccount(box) {
   const s = student.get();
-  if (!s) { fill(box); return; }
-  const menu = h('div', { class: 'menu glass', role: 'menu', hidden: true },
-    h('div', { class: 'menu-head' }, h('strong', { text: s.name }), h('span', { text: `${s.sid} \u00b7 session ${s.session}\u2013${String(+s.session + 1).slice(2)}` })),
-    fb.ready ? h('button', { type: 'button', role: 'menuitem', onclick: () => import('./views/gate.js').then((g) => g.startSignIn()) }, icon('upload'), 'Sign in with Google to contribute') : null,
+  const signInBtn = h('a', { class: 'btn btn-sm head-signin', href: '#/signin' }, icon('user'), h('span', { text: 'Sign in' }));
+  if (!s) { fill(box, signInBtn); return; }
+  const menu = h('div', { class: 'menu', role: 'menu', hidden: true },
+    h('div', { class: 'menu-head' }, h('strong', { text: s.name }), h('span', { text: `${s.sid} \u00b7 session ${s.session}\u2013${String(+s.session + 1).slice(2)}` }),
+      h('span', { class: 'pill pill-info' }, 'Student access')),
+    h('a', { href: '#/signin', role: 'menuitem' }, icon('upload'), 'Sign in with Google to upload'),
+    h('a', { href: '#/signin?next=/admin', role: 'menuitem' }, icon('shield'), 'Staff & editor sign-in'),
+    h('hr'),
     h('button', { type: 'button', role: 'menuitem', onclick: () => { student.clear(); decide(); } }, icon('logout'), 'Not you? Change student'));
-  const btn = h('button', { class: 'avatar', type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Account menu' }, h('span', { class: 'avatar-txt', text: initials(s.name) }));
+  fill(box, signInBtn, ...accountMenu(h('span', { class: 'avatar-txt', text: initials(s.name) }), menu, 'Student menu'));
+}
+
+function accountMenu(face, menu, label) {
+  const btn = h('button', { class: 'avatar', type: 'button', 'aria-haspopup': 'menu', 'aria-expanded': 'false', 'aria-label': label }, face);
   const toggle = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
   btn.onclick = (e) => { e.stopPropagation(); toggle(menu.hidden); };
   closeAccountMenu = (e) => { if (!menu.hidden && !menu.contains(e.target)) toggle(false); };
   menu.addEventListener('click', (e) => { if (e.target.closest('a,button')) toggle(false); });
-  fill(box, btn, menu);
+  menu.addEventListener('keydown', (e) => { if (e.key === 'Escape') { toggle(false); btn.focus(); } });
+  return [btn, menu];
 }
 
 async function refreshStaffBadge() {
@@ -154,13 +163,16 @@ async function showAnnouncement() {
 }
 
 /* ---------- theme ---------- */
+// Follows the device setting until the visitor picks one.
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
 function applyTheme(t) {
   document.documentElement.dataset.theme = t;
-  $('meta[name=theme-color]').content = t === 'light' ? '#eaf3ee' : '#06231b';
+  document.querySelectorAll('meta[name=theme-color]').forEach((m) => { m.content = t === 'light' ? '#f3f6fb' : '#050a16'; });
   $('#theme-btn use').setAttribute('href', t === 'light' ? '#i-moon' : '#i-sun');
   $('#theme-btn').title = t === 'light' ? 'Switch to dark view' : 'Switch to light view';
 }
-applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
+applyTheme(document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light');
+darkQuery.addEventListener?.('change', (e) => { if (!store.get('acce.theme')) applyTheme(e.matches ? 'dark' : 'light'); });
 $('#theme-btn').addEventListener('click', () => {
   const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
   applyTheme(next);
@@ -186,6 +198,7 @@ function setMode(next) {
   if (next === 'app') {
     const who = `${fb.user?.uid || student.get()?.sid || 'anon'}|${fb.role || ''}|${fb.ready}`;
     if (mode === 'app' && who === identity) return;          // nothing changed: keep the current view
+    const justSignedIn = fb.user && !identity?.startsWith(fb.user.uid);
     identity = who;
     gate.hidden = true; fill(gate);
     app.hidden = false;
@@ -194,6 +207,8 @@ function setMode(next) {
     drawAccount();
     if (changed || fb.ready) showAnnouncement();
     refreshStaffBadge();
+    const next = justSignedIn && takeNext();
+    if (next && next !== parseHash().path) { location.hash = '#' + next; return; }
     render();
   } else {
     if (mode === next) return;                               // don't wipe a half-filled form
@@ -204,26 +219,35 @@ function setMode(next) {
   }
 }
 
+/** Where to go after Google sign-in completes (survives the redirect fallback). */
+function takeNext() {
+  try {
+    const n = sessionStorage.getItem('acce.next');
+    sessionStorage.removeItem('acce.next');
+    return n && /^\/[\w/-]*$/.test(n) ? n : null;
+  } catch { return null; }
+}
+
 /**
  * Who gets in:
  *  - students: name + session + ID on this device (the default, no Google needed)
- *  - Google accounts (contributors, staff): once they have a profile
- * A student who later signs in with Google gets their profile filled from their student details.
+ *  - Google accounts (contributors, staff): straight in; contributors are asked
+ *    for their details on the upload page, and students get them filled in.
  */
 let autoProfiling = false;
 function decide() {
   const s = student.get();
   if (fb.user) {
-    if (fb.profile) return setMode('app');
-    if (s && !autoProfiling) {
+    if (autoProfiling) return;
+    if (!fb.profile && s) {
+      // fill the new account's profile from the student details first, so the upload page opens ready
       autoProfiling = true;
       saveProfile({ displayName: s.name, affiliation: 'student', session: s.session, studentId: s.sid })
-        .catch(() => setMode('profile'))
-        .finally(() => { autoProfiling = false; });
+        .catch((e) => console.info('Profile not saved:', e.code || e.message))
+        .finally(() => { autoProfiling = false; setMode('app'); });
       return;
     }
-    if (!autoProfiling) setMode('profile');
-    return;
+    return setMode('app');
   }
   if (s) { logVisit(s); return setMode('app'); }
   setMode('student');

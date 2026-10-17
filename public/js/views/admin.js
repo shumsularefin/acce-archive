@@ -7,8 +7,8 @@
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, fmtSize, fmtDate, fmtSession, relTime, plural, toast, ask, modal, emptyState, skeletonRows, copyText, fill } from '../lib/dom.js';
-import { fb, fs, docs, isAdmin, isOwner, isRootOwner } from '../services/firebase.js';
-import { call, backendReady } from '../services/backend.js';
+import { fb, fs, docs, isAdmin, isOwner, isRootOwner, getSettings, fsMessage } from '../services/firebase.js';
+import { call, backendReady, isServiceUrl, serviceUrlFromCode, useServiceUrl } from '../services/backend.js';
 import { listFolder, isFolder, previewUrl, getIndex, cachedIndex, clearListingCache } from '../services/drive.js';
 import { buildDocs, search } from '../lib/search.js';
 import { buildMetaForm } from './metaform.js';
@@ -36,7 +36,7 @@ export function render({ root, params, navigate }) {
   root.append(h('section', { class: 'page admin' },
     h('div', { class: 'page-head row-between' },
       h('div', {}, h('span', { class: 'eyebrow', text: `Dashboard · ${fb.role}` }), h('h1', { text: tabs.find((t) => t.key === tab).label })),
-      backendReady() ? null : h('span', { class: 'pill pill-warn' }, icon('alert'), 'Backend not connected')),
+      backendReady() ? null : h('a', { class: 'pill pill-warn', href: '#/admin/settings', title: 'Connect the upload service in Settings' }, icon('alert'), 'Uploads not connected')),
     h('div', { class: 'admin-layout' },
       h('nav', { class: 'admin-tabs glass', 'aria-label': 'Dashboard sections' }, tabs.map((t) =>
         h('a', { href: `#/admin/${t.key}`, class: t.key === tab ? 'active' : '', 'aria-current': t.key === tab ? 'page' : null }, icon(t.ic), h('span', { text: t.label }),
@@ -69,7 +69,7 @@ async function overview({ panel, F }) {
       fill(storage, h('h2', {}, icon('database'), 'Drive storage'), storageMeter(s.storage));
     }).catch((e) => fill(storage, h('h2', {}, icon('database'), 'Drive storage'), h('p', { class: 'danger', text: e.message })));
   } else {
-    fill(storage, h('h2', {}, icon('database'), 'Drive storage'), h('p', { class: 'muted', text: 'Connect the Apps Script backend (CONFIG.backendUrl) to see storage and run reviews.' }));
+    fill(storage, h('h2', {}, icon('database'), 'Drive storage'), h('p', { class: 'muted' }, 'Connect the upload service (the Apps Script web app) to see Drive storage and review submissions. ', isOwner() ? h('a', { class: 'link', href: '#/admin/settings', text: 'Connect it in Settings' }) : 'Ask the owner to connect it in Settings.'));
     fill(tiles, ...['pending', 'approved', 'rejected', 'reports'].map((k) => tile(k, '-')));
   }
 
@@ -200,7 +200,7 @@ async function reviewForm(s, onDone) {
   const run = async (decision) => {
     let meta;
     if (decision === 'approve') {
-      try { meta = form.read(); } catch (e) { return toast(e.message, 'error'); }
+      try { meta = form.read(); } catch (e) { return toast(fsMessage(e), 'error', 7000); }
       if (!picker.value()) return toast('Choose the destination folder.', 'error');
     } else if (note.value.trim().length < 5) { note.focus(); return toast('Tell the contributor why it was declined.', 'error'); }
     approve.disabled = reject.disabled = true;
@@ -340,13 +340,13 @@ function reports({ panel, F, add }) {
     const note = await ask({ title: status === 'dismissed' ? 'Dismiss report' : 'Mark as fixed', message: 'Add a short note for the record.', confirm: 'Save', input: 'What was done', minLength: 0 });
     if (note === null) return;
     try { await F.updateDoc(F.doc(fb.db, 'reports', r.id), { status, resolution: note, resolvedBy: fb.user.email, resolvedAt: F.serverTimestamp() }); toast('Report updated', 'ok'); }
-    catch (e) { toast(e.message, 'error'); }
+    catch (e) { toast(fsMessage(e), 'error', 7000); }
   }
   async function takedown(r) {
     const reason = await ask({ title: 'Take down this file?', message: 'It is moved to the private Withdrawn folder and disappears from the public archive.', confirm: 'Take down', danger: true, input: 'Reason', minLength: 5 });
     if (!reason) return;
     try { await call('takedown', { fileId: r.fileId, reason, reportId: r.id, mode: 'withdraw' }); clearListingCache(); toast('Taken down', 'ok'); }
-    catch (e) { toast(e.message, 'error'); }
+    catch (e) { toast(fsMessage(e), 'error', 7000); }
   }
 }
 
@@ -368,7 +368,7 @@ async function catalogue({ panel }) {
   }
   const liveBox = h('input', { type: 'checkbox', onchange: async (e) => {
     try { await setCatalogLive(e.target.checked); toast(e.target.checked ? 'Browsing and search now use the catalogue' : 'Browsing and search use the Drive folders again', 'ok'); }
-    catch (x) { e.target.checked = !e.target.checked; toast(x.message, 'error'); }
+    catch (x) { e.target.checked = !e.target.checked; toast(fsMessage(x), 'error', 7000); }
   } });
 
   panel.append(
@@ -477,7 +477,7 @@ function courses({ panel, F, add }) {
           updatedAt: F.serverTimestamp(), updatedBy: fb.user.email
         }, { merge: true });
         toast('Course saved', 'ok'); m.close();
-      } catch (e) { toast(e.message, 'error'); }
+      } catch (e) { toast(fsMessage(e), 'error', 7000); }
     };
   }
 }
@@ -499,7 +499,7 @@ function people({ panel, F, add }) {
         h('td', { text: v.name }), h('td', { class: 'mono', text: v.studentId }), h('td', { text: fmtSession(v.session) }),
         h('td', { text: v.visits || 1 }), h('td', { text: fmtDate(v.firstSeen) }), h('td', { text: relTime(v.lastSeen) })))))
       : emptyState('users', 'No visits logged yet', 'Students appear here after entering with their ID.'));
-  }, (e) => fill(visitors, h('p', { class: 'danger', text: e.message }))));
+  }, (e) => fill(visitors, h('p', { class: e.code === 'permission-denied' ? 'muted small' : 'danger', style: { padding: '14px' }, text: e.code === 'permission-denied' ? 'The visitor log appears here once the updated Firestore rules are deployed (npm run deploy:rules).' : e.message }))));
 
   const ROLES = {
     owner: 'Owner: manages the team and settings, plus everything below',
@@ -557,7 +557,7 @@ function people({ panel, F, add }) {
           onclick: async () => {
             const next = u.status === 'blocked' ? 'active' : 'blocked';
             if (next === 'blocked' && !(await ask({ title: `Block ${u.displayName}?`, message: 'They can still browse but can no longer submit material.', confirm: 'Block', danger: true }))) return;
-            try { await F.updateDoc(F.doc(fb.db, 'users', u.id), { status: next }); toast(next === 'blocked' ? 'Blocked' : 'Unblocked', 'ok'); } catch (e) { toast(e.message, 'error'); }
+            try { await F.updateDoc(F.doc(fb.db, 'users', u.id), { status: next }); toast(next === 'blocked' ? 'Blocked' : 'Unblocked', 'ok'); } catch (e) { toast(fsMessage(e), 'error', 7000); }
           } })))))));
   }, (e) => fill(users, h('p', { class: 'danger', text: e.message }))));
 }
@@ -578,7 +578,7 @@ async function settings({ panel, F }) {
     const out = {};
     for (const [k, el] of Object.entries(fields)) out[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? Number(el.value) : el.value.trim();
     try { await F.setDoc(F.doc(fb.db, 'config', 'settings'), out, { merge: true }); toast('Settings saved - the backend picks them up within a minute', 'ok'); }
-    catch (e) { toast(e.message, 'error'); }
+    catch (e) { toast(fsMessage(e), 'error', 7000); }
   };
 
   const out = h('pre', { class: 'console', hidden: true });
@@ -590,6 +590,7 @@ async function settings({ panel, F }) {
     } }, 'Run'));
 
   panel.append(
+    serviceCard(s.backendUrl, ro, F),
     h('div', { class: 'card glass stack' }, h('h2', {}, icon('settings'), 'Submission settings'), ro ? h('p', { class: 'muted small', text: 'Only owners can change settings.' }) : null,
       h('label', { class: 'check' }, fields.uploadsOpen, h('span', { text: 'Accept new submissions' })),
       h('div', { class: 'grid-2' }, f('Max file size (MB)', fields.maxFileMB), f('Keep this much Drive space free (MB)', fields.reserveMB, 'Uploads pause automatically below this.')),
@@ -618,4 +619,56 @@ function auditList(rows) {
   return h('ol', { class: 'timeline' }, rows.map((r) => h('li', {},
     h('b', { text: r.actor }), ` ${verb[r.action] || r.action} `, h('span', { class: 'mono small', text: r.target }),
     h('span', { class: 'muted small', text: ` · ${relTime(r.at)}` }), r.note ? h('p', { class: 'muted small', text: r.note }) : null)));
+}
+
+/** Upload service (Apps Script web app): paste its /exec URL, test it, save it to config/settings. */
+function serviceCard(saved, ro, F) {
+  const fromCode = serviceUrlFromCode();
+  const state = h('span', { class: `pill ${backendReady() ? 'pill-ok' : 'pill-warn'}` }, icon(backendReady() ? 'check' : 'alert'), backendReady() ? 'Connected' : 'Not connected');
+  const url = h('input', { class: 'input mono-url', type: 'url', value: fromCode ? CONFIG.backendUrl : (saved || ''), disabled: ro || fromCode, spellcheck: false,
+    placeholder: 'https://script.google.com/macros/s/…/exec' });
+  const msg = h('p', { class: 'form-error', role: 'status', hidden: true });
+  const say = (text, ok) => { msg.textContent = text; msg.className = ok ? 'form-ok' : 'form-error'; msg.hidden = false; };
+  const test = async () => {
+    const u = url.value.trim();
+    if (!isServiceUrl(u)) { say('That is not a web app URL. It should start with https://script.google.com/macros/s/ and end with /exec.'); return false; }
+    say('Testing…', true);
+    try {
+      const c = await call('config', {}, { auth: false, url: u });
+      say(`Connected. Uploads are ${c.uploadsOpen ? 'open' : 'paused'}, up to ${c.maxFileMB} MB per file.`, true);
+      return true;
+    } catch (e) {
+      say(`The service did not answer correctly: ${e.message} Check that the deployment's access is set to "Anyone".`);
+      return false;
+    }
+  };
+  const save = async () => {
+    const u = url.value.trim();
+    if (u && !(await test())) return;
+    try {
+      await F.setDoc(F.doc(fb.db, 'config', 'settings'), { backendUrl: u }, { merge: true });
+      useServiceUrl(u);
+      getSettings({ fresh: true });
+      toast(u ? 'Upload service connected - students can upload now' : 'Upload service disconnected', 'ok', 6000);
+      fill(state, icon(u ? 'check' : 'alert'), u ? 'Connected' : 'Not connected');
+      if (u) document.querySelector('.page-head .pill-warn')?.remove();
+      state.className = `pill ${u ? 'pill-ok' : 'pill-warn'}`;
+    } catch (e) { say(e.code === 'permission-denied' ? 'Only owners can change this.' : e.message); }
+  };
+  return h('div', { class: 'card glass stack' },
+    h('div', { class: 'row-between' }, h('h2', { style: { margin: 0 } }, icon('upload'), 'Upload service'), state),
+    h('p', { class: 'muted small', text: 'Uploads go through a small Google Apps Script web app that runs as the archive\u2019s Drive owner, so files land in your Drive (not Firebase) and stay private until approved.' }),
+    fromCode ? h('p', { class: 'fine', text: 'Set in public/js/config.js (backendUrl). Clear it there to manage it here instead.' }) : null,
+    h('div', { class: 'field' }, h('label', { text: 'Web app URL' }), url),
+    msg,
+    ro || fromCode ? null : h('div', { class: 'row-end' },
+      h('button', { class: 'btn btn-ghost', type: 'button', onclick: test }, icon('refresh'), 'Test'),
+      h('button', { class: 'btn btn-primary', type: 'button', onclick: save }, icon('check'), 'Save')),
+    h('details', { class: 'more' },
+      h('summary', { text: 'Where do I find this URL?' }),
+      h('ol', { class: 'step-list' },
+        h('li', { text: 'Open your archive\u2019s Apps Script project (script.google.com) while signed in as the Drive owner.' }),
+        h('li', { text: 'Click Deploy \u2192 New deployment \u2192 the gear \u2192 Web app.' }),
+        h('li', { text: 'Execute as: Me. Who has access: Anyone. Click Deploy and allow the permissions.' }),
+        h('li', { text: 'Copy the Web app URL (it ends in /exec), paste it above, then Test and Save.' }))));
 }

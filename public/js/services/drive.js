@@ -19,8 +19,10 @@ export function rootKeyOf(id) {
 async function driveGet(url) {
   const res = await fetch(url);
   if (!res.ok) {
-    let reason = `request failed (${res.status})`;
+    let reason = `request failed (${res.status})`, detail = '';
+    try { detail = (await res.json()).error?.errors?.[0]?.reason || ''; } catch {}
     if (res.status === 403) reason = 'access denied - check the API key and folder sharing';
+    if (/rateLimit/i.test(detail)) reason = 'too many requests, try again in a minute';
     if (res.status === 404) reason = 'folder not found or no longer shared';
     if (res.status === 429) reason = 'too many requests, try again in a minute';
     throw new Error(reason);
@@ -99,40 +101,66 @@ let indexPromise = null;
 let memoryIndex = null;
 
 /**
- * Breadth-first crawl of every collection. Each request asks for the
- * children of up to 25 folders at once, so a deep archive costs roughly
- * one request per level instead of one per folder.
+ * Breadth-first crawl of every collection, one folder per request with a
+ * few requests in flight. (Drive refuses "'a' in parents or 'b' in parents"
+ * queries made with an API key, so folders cannot be batched.)
  */
+const CRAWL_PARALLEL = 6;
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function listForCrawl(id) {
+  const out = [];
+  let token = '';
+  do {
+    const url = `${API}?q=${encodeURIComponent(`'${id}' in parents and trashed=false`)}&pageSize=1000`
+      + `&fields=nextPageToken,files(id,name,mimeType,size,modifiedTime,createdTime,properties)`
+      + (token ? `&pageToken=${encodeURIComponent(token)}` : '') + `&key=${CONFIG.driveApiKey}`;
+    let data;
+    for (let attempt = 0; ; attempt++) {
+      try { data = await driveGet(url); break; }
+      catch (e) {
+        // rate limits (403 rateLimitExceeded or 429): back off and retry a few times
+        if (attempt >= 3 || !/too many/.test(e.message)) throw e;
+        await pause(800 * 2 ** attempt);
+      }
+    }
+    out.push(...(data.files || []));
+    token = data.nextPageToken || '';
+  } while (token);
+  return out;
+}
+
 async function crawl(onProgress) {
   const folders = {};   // id -> {name, parent, root}
   const files = [];
-  let queue = [];
+  const queue = [];
   for (const [key, f] of Object.entries(CONFIG.folders)) {
     folders[f.id] = { name: f.name, parent: null, root: key };
     queue.push(f.id);
   }
-  while (queue.length) {
-    const batch = queue.splice(0, 25);
-    const q = `(${batch.map((id) => `'${id}' in parents`).join(' or ')}) and trashed=false`;
-    let token = '';
-    do {
-      const url = `${API}?q=${encodeURIComponent(q)}&pageSize=1000`
-        + `&fields=nextPageToken,files(id,name,mimeType,size,modifiedTime,createdTime,parents,properties)`
-        + (token ? `&pageToken=${encodeURIComponent(token)}` : '') + `&key=${CONFIG.driveApiKey}`;
-      const data = await driveGet(url);
-      for (const f of data.files || []) {
-        const parent = (f.parents || []).find((p) => folders[p]);
-        if (!parent) continue;
-        if (f.mimeType === FOLDER) {
-          if (!folders[f.id]) { folders[f.id] = { name: f.name, parent, root: folders[parent].root }; queue.push(f.id); }
-        } else {
-          files.push([f.id, f.name, f.mimeType, +(f.size || 0), f.modifiedTime || '', f.createdTime || '', parent, f.properties || null]);
-        }
+  let active = 0;
+  await new Promise((resolve, reject) => {
+    const pump = () => {
+      if (!queue.length && !active) return resolve();
+      while (active < CRAWL_PARALLEL && queue.length) {
+        const parent = queue.shift();
+        active++;
+        listForCrawl(parent).then((children) => {
+          for (const f of children) {
+            if (f.mimeType === FOLDER) {
+              if (!folders[f.id]) { folders[f.id] = { name: f.name, parent, root: folders[parent].root }; queue.push(f.id); }
+            } else {
+              files.push([f.id, f.name, f.mimeType, +(f.size || 0), f.modifiedTime || '', f.createdTime || '', parent, f.properties || null]);
+            }
+          }
+          onProgress?.({ folders: Object.keys(folders).length, files: files.length });
+          active--;
+          pump();
+        }, reject);
       }
-      token = data.nextPageToken || '';
-    } while (token);
-    onProgress?.({ folders: Object.keys(folders).length, files: files.length });
-  }
+    };
+    pump();
+  });
   return { t: Date.now(), folders, files };
 }
 

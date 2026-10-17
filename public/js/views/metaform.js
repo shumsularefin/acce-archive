@@ -28,7 +28,7 @@ let uid = 0;
  * @returns {{el: HTMLElement, read: () => object, set: (meta) => void}}
  * read() throws an Error with a readable message when something required is missing.
  */
-export async function buildMetaForm({ initial = {}, hideTitle = false, lockCollection = false, staff = false, onCourse } = {}) {
+export async function buildMetaForm({ initial = {}, hideTitle = false, lockCollection = false, staff = false, simple = false, onCourse } = {}) {
   const id = `mf${++uid}`;
   const list = await getCourses().catch(() => []);
   const byCode = Object.fromEntries(list.map((c) => [c.id, c]));
@@ -63,20 +63,25 @@ export async function buildMetaForm({ initial = {}, hideTitle = false, lockColle
   const field = (label, input, extra = '') => h('div', { class: `field ${extra}`.trim() }, h('label', { for: input.id, text: label }), input);
   const examRow = h('div', { class: 'grid-2' }, field('Exam', f.examKind), field('Exam year', f.examYear));
 
+  // simple: the upload page shows only what is needed to file the material; the rest folds away
+  const termRow = h('div', { class: 'grid-2' }, field('Year / term', f.level), field('Session', f.session));
+  const rightsField = staff ? null : h('fieldset', { class: 'field' }, h('legend', { class: 'label', text: 'Rights' }), rights);
   const el = h('div', { class: 'metaform' },
     datalists,
     hideTitle ? null : field('Title', f.title),
     h('div', { class: 'grid-2' }, field('Collection', f.collection), field('Material type', f.type)),
     h('div', { class: 'grid-2' }, field('Course code', f.courseCode), field('Course title', f.courseTitle)),
-    h('div', { class: 'grid-2' }, field('Year / term', f.level), field('Session', f.session)),
+    simple ? null : termRow,
     examRow,
     h('details', { class: 'more', open: staff },
-      h('summary', { text: 'More details (optional)' }),
+      h('summary', { text: simple ? 'More details: term, session, teacher, rights (optional)' : 'More details (optional)' }),
+      simple ? termRow : null,
       h('div', { class: 'grid-2' }, field('Course teacher(s)', f.instructors), field('Author(s)', f.authors)),
       h('div', { class: 'grid-2' }, field('Curriculum version(s), comma separated', f.curriculum), field('Language', f.language)),
       field('Keywords (comma separated)', f.tags),
-      field('Description', f.description)),
-    staff ? null : h('fieldset', { class: 'field' }, h('legend', { class: 'label', text: 'Rights' }), rights),
+      field('Description', f.description),
+      simple ? rightsField : null),
+    simple ? null : rightsField,
     staff ? null : h('label', { class: 'check' }, credit, h('span', { text: 'Credit me by name when this is published' })));
 
   const syncExam = () => { examRow.hidden = !['question', 'solution'].includes(f.type.value); };

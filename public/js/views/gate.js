@@ -1,46 +1,38 @@
 /* ============================================================
-   Entry screen (student details by default, Google for contributors
-   and staff) and the first-time profile for Google accounts.
+   Entry screen: student details by default (as on the original site),
+   with Google sign-in for contributors and staff. Also the profile
+   form used by the upload and profile pages.
    ============================================================ */
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
-import { h, icon, toast, fill } from '../lib/dom.js';
-import { fb, signIn, signOut, saveProfile, initFirebase } from '../services/firebase.js';
+import { h, icon, fill } from '../lib/dom.js';
+import { fb, saveProfile } from '../services/firebase.js';
 import { student, validateStudent, logVisit } from '../services/student.js';
+import { googleButton } from './signin.js';
 
-const GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
-
-export async function startSignIn(errorEl) {
-  try {
-    await signIn();
-  } catch (e) {
-    if (errorEl) { errorEl.textContent = e.message; errorEl.hidden = false; }
-    else toast(e.message, 'error', 7000);
-  }
+export function renderGate(root) {
+  fill(root, studentCard());
+  root.querySelector('input')?.focus();
 }
 
-export function renderGate(root, step) {
-  fill(root, step === 'profile' ? profileCard() : studentCard());
-  root.querySelector('input,button')?.focus();
-}
+const sessionOptions = () => Array.from({ length: CONFIG.sessionTo - CONFIG.sessionFrom + 1 }, (_, i) => {
+  const y = CONFIG.sessionTo - i;
+  return h('option', { value: String(y), text: `${y}\u2013${String(y + 1).slice(2)}` });
+});
 
 /** The default way in: name + session + student ID, exactly as on the original site. */
 function studentCard() {
   const err = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const name = h('input', { class: 'input', id: 'f-name', name: 'name', autocomplete: 'name', placeholder: 'e.g. Shumsul Arefin', maxlength: 80, required: true });
   const session = h('select', { class: 'input', id: 'f-session', name: 'session', required: true },
-    h('option', { value: '', text: 'Select your session', disabled: true, selected: true }),
-    Array.from({ length: CONFIG.sessionTo - CONFIG.sessionFrom + 1 }, (_, i) => {
-      const y = CONFIG.sessionTo - i;
-      return h('option', { value: String(y), text: `${y}\u2013${String(y + 1).slice(2)}` });
-    }));
+    h('option', { value: '', text: 'Select your session', disabled: true, selected: true }), sessionOptions());
   const sid = h('input', { class: 'input mono', id: 'f-id', name: 'sid', maxlength: 8, spellcheck: false, autocapitalize: 'characters', inputmode: 'text', placeholder: 'e.g. 20ACE001', required: true });
   const form = h('form', { class: 'stack', novalidate: true, onsubmit: (e) => {
     e.preventDefault();
     const id = sid.value.trim().toUpperCase();
     const problem = validateStudent(name.value, session.value, id);
     sid.setAttribute('aria-invalid', problem ? 'true' : 'false');
-    if (problem) { err.textContent = problem; err.hidden = false; return; }
+    if (problem) { err.textContent = problem; err.hidden = false; form.classList.remove('shake'); void form.offsetWidth; form.classList.add('shake'); return; }
     const s = student.save(name.value, session.value, id);
     logVisit(s);
     window.dispatchEvent(new Event('acce:student'));
@@ -50,42 +42,43 @@ function studentCard() {
     h('div', { class: 'field' }, h('label', { for: 'f-session', text: 'Session' }), session),
     h('div', { class: 'field' }, h('label', { for: 'f-id', text: 'Student ID' }), sid)),
   err,
-  h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Enter the archive'));
+  h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Enter the archive', icon('chevron')));
 
-  const gErr = h('p', { class: 'form-error', role: 'alert', hidden: !fb.error, text: fb.error || '' });
-  const google = h('button', { class: 'btn btn-google btn-sm', type: 'button' });
-  google.innerHTML = GOOGLE_G;                       // static, trusted markup
-  google.append(h('span', { text: 'Continue with Google' }));
-  google.onclick = async () => {
-    google.disabled = true; gErr.hidden = true;
-    if (await initFirebase()) await startSignIn(gErr);
-    else { gErr.textContent = 'Google sign-in is unavailable right now. Students can enter with their ID above.'; gErr.hidden = false; }
-    google.disabled = false;
-  };
+  const gErr = h('p', { class: 'form-error', role: 'alert', hidden: true });
 
-  return h('div', { class: 'gate-card glass rise' },
-    h('div', { class: 'watermark', 'aria-hidden': 'true' }),
-    h('div', { class: 'gate-brand' },
-      h('img', { src: 'assets/acce-logo.png', alt: '', width: 56, height: 56 }),
-      h('div', {}, h('span', { class: 'eyebrow', text: 'GSTU \u00b7 ACCE' }), h('h1', { text: 'The ACCE Archive' }))),
-    h('p', { class: 'gate-sub', text: 'Departmental resources are open to students. Enter your details once on this device.' }),
-    form,
-    h('div', { class: 'gate-alt' },
-      h('span', { class: 'gate-or', text: 'Faculty, staff, or contributing material?' }),
-      gErr, google));
+  return h('div', { class: 'gate-split rise' },
+    h('div', { class: 'gate-panel' },
+      h('span', { class: 'crest' }, h('img', { src: 'assets/acce-crest-192.png', alt: 'ACCE, GSTU crest', width: 104, height: 104 })),
+      h('div', {},
+        h('h1', {}, 'ACCE Archive', h('span', { text: 'Applied Chemistry & Chemical Engineering \u00b7 GSTU' })),
+      ),
+      h('p', { text: 'Books, lecture notes, past questions, lab manuals and theses from every batch, free for students of the department.' }),
+      h('ul', { class: 'gate-points' },
+        h('li', {}, icon('layers'), 'Every course and every batch in one place'),
+        h('li', {}, icon('search'), 'Search all collections in seconds'),
+        h('li', {}, icon('download'), 'Preview and download straight from Google Drive'),
+        h('li', {}, icon('upload'), 'Share your own notes, reviewed before publishing'))),
+    h('div', { class: 'gate-form' },
+      h('span', { class: 'eyebrow', text: 'Student access' }),
+      h('h2', { text: 'Welcome to the archive' }),
+      h('p', { class: 'gate-sub', text: 'Enter your details once on this device. No account or password needed.' }),
+      form,
+      h('div', { class: 'gate-alt' },
+        h('span', { class: 'gate-or', text: /^#\/(admin|signin)/.test(location.hash)
+          ? 'Owner, editors and reviewers: sign in with Google to open the dashboard.'
+          : 'Faculty, editors, or uploading material?' }),
+        gErr, googleButton({ errorEl: gErr }))));
 }
 
 /** Shared by the gate and the profile page. */
 export function profileForm({ onSaved, submitLabel = 'Continue', initial = fb.profile } = {}) {
-  const p = initial || {};
+  const st = student.get();
+  const p = initial || (st ? { displayName: st.name, affiliation: 'student', session: st.session, studentId: st.sid } : {});
   const err = h('p', { class: 'form-error', role: 'alert', hidden: true });
   const name = h('input', { class: 'input', id: 'p-name', autocomplete: 'name', required: true, maxlength: 80, value: p.displayName || fb.user?.displayName || '' });
   const sessionSel = h('select', { class: 'input', id: 'p-session' },
     h('option', { value: '', text: 'Select your session', disabled: true, selected: true }),
-    Array.from({ length: CONFIG.sessionTo - CONFIG.sessionFrom + 1 }, (_, i) => {
-      const y = CONFIG.sessionTo - i;
-      return h('option', { value: String(y), text: `${y}–${String(y + 1).slice(2)}` });
-    }));
+    sessionOptions());
   if (p.session) sessionSel.value = p.session;
   const sid = h('input', { class: 'input mono', id: 'p-sid', maxlength: 8, spellcheck: false, autocapitalize: 'characters', placeholder: 'e.g. 20ACE001', value: p.studentId || '' });
   const studentFields = h('div', { class: 'student-fields' },
@@ -140,14 +133,4 @@ function validate(data, session, studentId) {
     data.studentId = studentId;
   }
   return null;
-}
-
-function profileCard() {
-  return h('div', { class: 'gate-card glass rise' },
-    h('div', { class: 'watermark', 'aria-hidden': 'true' }),
-    h('span', { class: 'eyebrow', text: 'One last step' }),
-    h('h1', { text: `Welcome, ${(fb.user?.displayName || '').split(' ')[0] || 'there'}` }),
-    h('p', { class: 'gate-sub', text: 'Tell us who you are. This is asked once, and lets reviewers credit your contributions properly.' }),
-    profileForm({ submitLabel: 'Enter the archive' }),
-    h('button', { class: 'link-btn', type: 'button', text: `Not ${fb.user?.email}? Use another account`, onclick: () => signOut() }));
 }

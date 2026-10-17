@@ -13,7 +13,7 @@
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { store } from '../lib/dom.js';
-import { fb, fs, docs } from './firebase.js';
+import { fb, fs, docs, isStaff } from './firebase.js';
 import { getIndex } from './drive.js';
 import { inferMeta } from '../lib/infer.js';
 
@@ -79,8 +79,12 @@ export function syncCatalog({ full = false } = {}) {
         since = q.docs[q.size - 1].data().updatedAt.toMillis();
       }
       mem.live = live; mem.snapshot = snap;
+    } else if (!isStaff()) {
+      // live but no snapshot yet: visitors keep browsing the Drive folders rather than reading
+      // every record one by one (which would use up the free Firestore quota in a day)
+      mem = { ...(mem || { items: new Map(), snapVersion: 0, cursor: 0 }), live: false, snapshot: null };
     } else {
-      // live but no snapshot published yet (only until an admin opens the Catalogue tab)
+      // staff, live but no snapshot published yet (only until an admin opens the Catalogue tab)
       const all = await F.getDocs(F.collection(fb.db, 'items'));
       mem = { items: new Map(all.docs.map((d) => [d.id, plain(d.id, d.data())])), live, snapVersion: 0, cursor: 0, snapshot: null };
     }
@@ -287,7 +291,15 @@ export async function importFromDrive(onProgress) {
     await batch.commit();
     onProgress?.({ phase: 'write', done: Math.min(i + 400, writes.length), total: writes.length });
   }
+  // publish first: switching browsing over before visitors can read the snapshot would cost a read per record per visit
+  let snap;
+  try { snap = await publishSnapshot(); }
+  catch (e) {
+    if (e.code !== 'permission-denied') throw e;
+    const err = new Error(`Saved ${writes.length} record changes, but the catalogue could not be published: the Firestore rules on the server are older than this site. Deploy firestore.rules (npm run deploy:rules), then run Import / sync again. Browsing keeps using the Drive folders until then.`);
+    err.code = 'rules-outdated';
+    throw err;
+  }
   await setCatalogLive(true, { lastImport: { files: idx.files.length, added, updated, missing } });
-  const snap = await publishSnapshot();
   return { files: idx.files.length, added, updated, missing, snapshot: snap };
 }

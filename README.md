@@ -19,7 +19,9 @@ Departmental archive for the Department of Applied Chemistry and Chemical Engine
 - **Curation:** edit any catalogue record, take files down, handle reports, keep a course catalogue across curriculum changes, block abusive contributors, and view a full audit log.
 - **Team roles:** a permanent owner (muhammadshamsularefin01@gmail.com) adds owners, **admins** (curation) and **reviewers** (moderation) from the dashboard.
 - **Storage management:** quota meter, largest files, size and rate limits, automatic upload pause before the quota runs out, and nightly clean-up.
-- **Dark and light themes**, phone layout with a bottom tab bar, keyboard shortcuts, reduced-motion support, and installable as an app.
+- **Sign-in that is always one click away:** a *Sign in* button in the top bar, a sign-in page (`#/signin`) with separate paths for contributors and for staff, and a *Staff & editor sign-in* link in the footer. After signing in you land where you were going (the dashboard, the upload page…). Signed-in staff reach the dashboard from the top bar or the account menu.
+- **Uploads switched on from the dashboard:** owners paste the Apps Script web app URL in *Dashboard → Settings → Upload service*, test it and save; no code edit.
+- **Design:** colours taken from the department crest's navy with a blue–cyan–green accent, the crest shown large and clear on a light disc, Tenorite type where installed (with Figtree as the open fallback), favicon and app icons, light and dark themes that follow the device, a phone layout with a bottom tab bar, keyboard shortcuts and reduced-motion support. Installable as an app.
 
 ## How it fits together
 

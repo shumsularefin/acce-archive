@@ -4,22 +4,42 @@
    preflight that Apps Script cannot answer.
    ============================================================ */
 import { CONFIG } from '../config.js';
-import { idToken } from './firebase.js';
+import { idToken, initFirebase, getSettings } from './firebase.js';
 import { TAXONOMY } from '../taxonomy.js';
 
-export const backendReady = () => /^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(CONFIG.backendUrl);
+/* The upload service is the Apps Script web app. Its URL comes from config.js, or, so that
+   owners can switch uploads on without editing code, from Dashboard > Settings
+   (Firestore config/settings.backendUrl). */
+const SERVICE_RE = /^https:\/\/script\.google\.com\/(?:a\/[\w.-]+\/)?macros\/s\/[\w-]+\/exec$/;
+export const isServiceUrl = (u) => SERVICE_RE.test(String(u || '').trim());
+let serviceUrl = isServiceUrl(CONFIG.backendUrl) ? CONFIG.backendUrl : '';
+export const backendReady = () => !!serviceUrl;
+export const serviceUrlFromCode = () => isServiceUrl(CONFIG.backendUrl);
+export function useServiceUrl(u) {
+  if (serviceUrlFromCode()) return;
+  serviceUrl = isServiceUrl(u) ? String(u).trim() : '';
+  configPromise = null;
+}
+
+/** Resolve the service URL (one cached settings read). Resolves to backendReady(). */
+let loadPromise;
+export function loadBackend() {
+  if (serviceUrlFromCode()) return Promise.resolve(true);
+  loadPromise ||= initFirebase().then(async (ok) => { if (ok) useServiceUrl((await getSettings()).backendUrl); return backendReady(); });
+  return loadPromise;
+}
 
 export class BackendError extends Error {
   constructor(code, message) { super(message); this.code = code; }
 }
 
-export async function call(action, payload = {}, { auth = true, signal } = {}) {
-  if (!backendReady()) throw new BackendError('misconfigured', 'Submissions are not switched on yet.');
+export async function call(action, payload = {}, { auth = true, signal, url = serviceUrl } = {}) {
+  if (!url) throw new BackendError('misconfigured', 'Uploads are not switched on yet.');
   const body = { action, ...payload };
   if (auth) body.idToken = await idToken();
   let res;
   try {
-    res = await fetch(CONFIG.backendUrl, {
+    res = await fetch(url, {
       method: 'POST', body: JSON.stringify(body), signal, redirect: 'follow',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }
     });
