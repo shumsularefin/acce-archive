@@ -1,0 +1,9 @@
+{
+  "name": "ACCE Archive · GSTU",
+  "short_name": "ACCE Archive",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#04150f",
+  "theme_color": "#06231b",
+  "icons": [{ "src": "assets/acce-logo.png", "sizes": "1250x1250", "type": "image/png", "purpose": "any" }]
+}
