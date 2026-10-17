@@ -294,6 +294,13 @@ test('permanent owner builds the team, imports the catalogue and browses it virt
   await page.getByRole('button', { name: 'Add to team' }).click();
   await expect(page.locator('.mini-row', { hasText: 'helper.admin@gmail.com' })).toBeVisible();
   await expect.poll(() => h.ctx.fsGet_('admins/' + encodeURIComponent('helper.admin@gmail.com'))?.role).toBe('admin');
+  // owners can remove a profile created by mistake
+  const aliceRow = page.locator('.data-table tr', { hasText: 'alice@gmail.com' });
+  await aliceRow.getByRole('button', { name: 'Remove' }).click();
+  await page.locator('dialog').getByRole('button', { name: 'Remove' }).click();
+  await expect(page.locator('.toast-ok', { hasText: 'Profile removed' })).toBeVisible();
+  await expect(aliceRow).toHaveCount(0);
+  expect(h.ctx.fsQuery_('users', [['email', '==', 'alice@gmail.com']])).toHaveLength(0);
   await noStrayNull(page);
   await shot(page, '14-team');
 

@@ -558,7 +558,13 @@ function people({ panel, F, add }) {
             const next = u.status === 'blocked' ? 'active' : 'blocked';
             if (next === 'blocked' && !(await ask({ title: `Block ${u.displayName}?`, message: 'They can still browse but can no longer submit material.', confirm: 'Block', danger: true }))) return;
             try { await F.updateDoc(F.doc(fb.db, 'users', u.id), { status: next }); toast(next === 'blocked' ? 'Blocked' : 'Unblocked', 'ok'); } catch (e) { toast(fsMessage(e), 'error', 7000); }
-          } })))))));
+          } }),
+          isOwner() ? h('button', { class: 'btn btn-quiet btn-sm danger', type: 'button', text: 'Remove', title: 'Delete this profile (for entries made by mistake)',
+            onclick: async () => {
+              if (!(await ask({ title: `Remove ${u.displayName} (${u.email})?`, message: 'Deletes this profile record. Their submissions are kept. If they upload again they will be asked for their details again.', confirm: 'Remove', danger: true }))) return;
+              try { await F.deleteDoc(F.doc(fb.db, 'users', u.id)); toast('Profile removed', 'ok'); }
+              catch (e) { toast(e.code === 'permission-denied' ? 'Removing profiles needs the updated Firestore rules: deploy them with npm run deploy:rules, then try again.' : fsMessage(e), 'error', 9000); }
+            } }) : null))))));
   }, (e) => fill(users, h('p', { class: 'danger', text: e.message }))));
 }
 
