@@ -52,7 +52,7 @@
   --shadow:0 2px 6px rgba(10,22,48,.05),0 18px 44px -14px rgba(10,22,48,.2);
   --shadow-lg:0 40px 90px -24px rgba(10,22,48,.32);
   --ring:0 0 0 4px color-mix(in srgb,var(--primary) 18%,transparent);
-  --head-bg:rgba(255,255,255,.78);
+  --head-bg:rgba(255,255,255,.96);
 
   /* names used across older components */
   --glass:var(--surface);
@@ -96,7 +96,7 @@
   --shadow-sm:0 1px 2px rgba(0,0,0,.35),0 3px 10px -2px rgba(0,0,0,.3);
   --shadow:0 2px 6px rgba(0,0,0,.3),0 22px 50px -16px rgba(0,0,0,.6);
   --shadow-lg:0 40px 100px -24px rgba(0,0,0,.75);
-  --head-bg:rgba(7,13,27,.72);
+  --head-bg:rgba(7,13,27,.96);
 }
 
 *{box-sizing:border-box}
@@ -114,18 +114,21 @@ hr{border:0; border-top:1px solid var(--edge); margin:20px 0}
 
 /* ---------- background ---------- */
 .bg{position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none}
-.aurora{position:absolute; inset:0}
-.aurora i{position:absolute; border-radius:50%; filter:blur(80px); opacity:.55; will-change:transform}
-.aurora i:nth-child(1){width:46vmax; height:46vmax; left:-14vmax; top:-22vmax; background:#9db8ff; animation:drift 28s ease-in-out infinite alternate}
-.aurora i:nth-child(2){width:38vmax; height:38vmax; right:-12vmax; top:-14vmax; background:#9fe7f2; animation:drift 34s ease-in-out infinite alternate-reverse}
-.aurora i:nth-child(3){width:34vmax; height:34vmax; left:30%; top:38%; background:#d6c8ff; opacity:.35; animation:drift 40s ease-in-out infinite alternate}
-.aurora i:nth-child(4){width:30vmax; height:30vmax; right:-6vmax; bottom:-16vmax; background:#a7f0cf; opacity:.4; animation:drift 36s ease-in-out infinite alternate-reverse}
-:root[data-theme="dark"] .aurora i{opacity:.32}
-:root[data-theme="dark"] .aurora i:nth-child(1){background:#2546b8}
-:root[data-theme="dark"] .aurora i:nth-child(2){background:#0d6f8a}
-:root[data-theme="dark"] .aurora i:nth-child(3){background:#4b2fa0; opacity:.2}
-:root[data-theme="dark"] .aurora i:nth-child(4){background:#0d7a55; opacity:.22}
-@keyframes drift{to{transform:translate3d(4vmax,3vmax,0) scale(1.08)}}
+/* colour fields painted once as gradients: no blur filters or animation, so scrolling stays cheap */
+.bg{contain:strict; transform:translateZ(0)}
+.aurora{position:absolute; inset:0;
+  background:
+    radial-gradient(45vmax 40vmax at 0% 0%,rgba(140,170,255,.42),transparent 70%),
+    radial-gradient(40vmax 34vmax at 100% 0%,rgba(140,225,240,.42),transparent 70%),
+    radial-gradient(36vmax 30vmax at 55% 60%,rgba(200,185,255,.22),transparent 70%),
+    radial-gradient(34vmax 30vmax at 100% 100%,rgba(150,235,200,.3),transparent 70%)}
+.aurora i{display:none}
+:root[data-theme="dark"] .aurora{
+  background:
+    radial-gradient(45vmax 40vmax at 0% 0%,rgba(37,70,184,.38),transparent 70%),
+    radial-gradient(40vmax 34vmax at 100% 0%,rgba(13,111,138,.34),transparent 70%),
+    radial-gradient(36vmax 30vmax at 55% 60%,rgba(75,47,160,.16),transparent 70%),
+    radial-gradient(34vmax 30vmax at 100% 100%,rgba(13,122,85,.2),transparent 70%)}
 .bg-lattice{position:absolute; inset:0; width:100%; height:100%; color:var(--navy); opacity:.07;
   -webkit-mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%); mask-image:radial-gradient(ellipse 80% 60% at 50% 0%,#000 30%,transparent 75%)}
 :root[data-theme="dark"] .bg-lattice{color:#9fb6ff; opacity:.07}
@@ -300,7 +303,6 @@ input.mono::placeholder{text-transform:none; letter-spacing:0; font-weight:400}
 .site-head{
   position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:14px; min-height:var(--head-h);
   padding:10px max(16px,calc((100vw - var(--page)) / 2 + 16px)); background:var(--head-bg); border-bottom:1px solid var(--edge);
-  backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%);
 }
 .brand{display:flex; align-items:center; gap:12px; min-width:0; text-decoration:none; flex:none}
 .brand-text{display:flex; flex-direction:column; min-width:0; line-height:1.2}
@@ -389,12 +391,12 @@ main{flex:1; width:100%; max-width:var(--page); margin:0 auto; padding:clamp(22p
 .hero-chips{margin:16px 0 0}
 .chip-link{font-size:.82rem}
 .hero-art{position:relative; display:grid; place-items:center; aspect-ratio:1; max-width:400px; width:100%; justify-self:center}
-.hero-art::before{content:""; position:absolute; inset:2%; border-radius:50%; background:conic-gradient(from 0deg,#1f57e7,#0a9fc0,#10b981,#7045e6,#1f57e7); filter:blur(34px); opacity:.35; animation:spin 30s linear infinite}
-.hero-art::after{content:""; position:absolute; inset:5%; border-radius:50%; border:1px dashed color-mix(in srgb,var(--primary) 35%,transparent); animation:spin 80s linear infinite}
+.hero-art::before{content:""; position:absolute; inset:-6%; border-radius:50%; background:radial-gradient(circle,rgba(31,87,231,.28) 0%,rgba(10,159,192,.18) 45%,transparent 70%)}
+.hero-art::after{content:""; position:absolute; inset:5%; border-radius:50%; border:1px dashed color-mix(in srgb,var(--primary) 35%,transparent)}
 .hero-art .crest{position:relative; width:82%; height:82%; box-shadow:0 0 0 10px color-mix(in srgb,var(--surface) 70%,transparent),0 30px 70px -20px rgba(1,37,62,.55)}
 .hero-art .crest img{width:92%; height:92%}
 .orbit{position:absolute; z-index:1; display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:12px; font-size:.8rem; font-weight:600;
-  background:var(--surface); border:1px solid var(--edge); box-shadow:var(--shadow); color:var(--text-2); animation:floaty 6s ease-in-out infinite}
+  background:var(--surface); border:1px solid var(--edge); box-shadow:var(--shadow); color:var(--text-2)}
 .orbit .ic{color:var(--c,var(--primary))}
 .orbit-1{top:10%; left:-4%; --c:var(--warm)}
 .orbit-2{bottom:16%; right:-6%; --c:var(--emerald); animation-delay:-3s}
@@ -485,7 +487,7 @@ main{flex:1; width:100%; max-width:var(--page); margin:0 auto; padding:clamp(22p
 .dir-table th{padding:0; background:var(--surface-2)}
 .sort-btn{display:inline-flex; align-items:center; gap:4px; width:100%; padding:11px 16px; font:inherit; font-size:.74rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; text-align:left; color:var(--muted); background:none; border:0; cursor:pointer}
 .sort-btn:hover{color:var(--text)}
-.dir-table tbody tr{animation:fadeUp .35s var(--ease) both; animation-delay:calc(var(--i,0) * 14ms); transition:background .12s}
+.dir-table tbody tr{animation:fadeUp .35s var(--ease) both; animation-delay:calc(min(var(--i,0),12) * 14ms); transition:background .12s}
 @keyframes fadeUp{from{opacity:0; transform:translateY(6px)}}
 .dir-table tbody tr:last-child td{border-bottom:0}
 .dir-table tbody tr:hover{background:var(--glass-2)}
@@ -500,7 +502,7 @@ tr.is-folder a.file-link{color:var(--primary)}
 .count-line{margin:12px 2px 0; font-size:.78rem; color:var(--muted)}
 .file-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:12px; padding:14px}
 .tile{display:flex; flex-direction:column; gap:6px; padding:10px; border-radius:12px; text-decoration:none; color:var(--text); border:1px solid var(--edge); background:var(--glass);
-  animation:fadeUp .35s var(--ease) both; animation-delay:calc(var(--i,0) * 16ms); transition:transform .2s var(--ease), border-color .2s, background .2s}
+  animation:fadeUp .35s var(--ease) both; animation-delay:calc(min(var(--i,0),12) * 16ms); transition:transform .2s var(--ease), border-color .2s, background .2s}
 .tile:hover{transform:translateY(-2px); border-color:color-mix(in srgb,var(--primary) 45%,transparent); background:var(--glass-2)}
 .tile-thumb{position:relative; aspect-ratio:4/3; border-radius:8px; overflow:hidden; display:grid; place-items:center; background:var(--glass-2)}
 .tile-thumb img{position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:top}
@@ -523,7 +525,7 @@ dialog.modal{width:min(560px,calc(100vw - 24px)); max-height:calc(100dvh - 32px)
   background:var(--surface); display:flex; flex-direction:column; overflow:hidden}
 dialog.modal:not([open]){display:none}
 dialog.modal[open]{animation:riseIn .25s var(--ease)}
-dialog.modal::backdrop{background:rgba(8,18,40,.38); backdrop-filter:blur(6px)}
+dialog.modal::backdrop{background:rgba(8,18,40,.45)}
 :root[data-theme="dark"] dialog.modal::backdrop{background:rgba(0,0,0,.6)}
 .modal-wide{width:min(1100px,calc(100vw - 24px)) !important}
 .modal-head{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px 14px 22px; border-bottom:1px solid var(--edge)}
@@ -594,7 +596,7 @@ dialog.modal::backdrop{background:rgba(8,18,40,.38); backdrop-filter:blur(6px)}
 .results-tools .input{width:auto}
 .results{display:flex; flex-direction:column; gap:8px}
 .result{display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:12px; text-decoration:none; color:var(--text); background:var(--glass); border:1px solid var(--edge);
-  animation:fadeUp .3s var(--ease) both; animation-delay:calc(var(--i,0) * 12ms); transition:border-color .15s, background .15s, transform .15s var(--ease)}
+  animation:fadeUp .3s var(--ease) both; animation-delay:calc(min(var(--i,0),12) * 12ms); transition:border-color .15s, background .15s, transform .15s var(--ease)}
 .result:hover{border-color:color-mix(in srgb,var(--primary) 45%,transparent); background:var(--glass-2); transform:translateX(2px)}
 .result-main{flex:1; min-width:0}
 .result-name{font-weight:500; overflow-wrap:anywhere}
@@ -787,7 +789,7 @@ button.mini-row:hover{background:var(--glass-2)}
 .library .browser-bar{position:static}
 .lib-groups{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; margin-bottom:26px}
 .lib-group{display:flex; align-items:center; gap:12px; padding:14px 14px 14px 12px; border-radius:12px; text-decoration:none; color:var(--text);
-  background:var(--glass); border:1px solid var(--edge); animation:fadeUp .3s var(--ease) both; animation-delay:calc(var(--i,0) * 14ms);
+  background:var(--glass); border:1px solid var(--edge); animation:fadeUp .3s var(--ease) both; animation-delay:calc(min(var(--i,0),12) * 14ms);
   transition:transform .18s var(--ease), border-color .18s, background .18s}
 .lib-group:hover{transform:translateY(-2px); border-color:color-mix(in srgb,var(--primary) 45%,transparent); background:var(--glass-2)}
 .lib-group > .ic:last-child{opacity:.4; transition:transform .2s var(--ease)}
@@ -850,7 +852,7 @@ button.mini-row:hover{background:var(--glass-2)}
   .main-nav{display:none}
   .head-dash span{display:none}
   .tabbar{position:fixed; left:0; right:0; bottom:0; z-index:25; display:flex; justify-content:space-around; padding:6px 6px calc(6px + env(safe-area-inset-bottom));
-    background:var(--head-bg); border-top:1px solid var(--edge); backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%)}
+    background:var(--head-bg); border-top:1px solid var(--edge)}
   .tab-link{position:relative; flex:1; display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 2px; font-size:.68rem; font-weight:500; color:var(--muted); text-decoration:none; border-radius:12px}
   .tab-link .ic{width:22px; height:22px}
   .tab-link.active{color:var(--primary); background:color-mix(in srgb,var(--primary) 10%,transparent); font-weight:600}

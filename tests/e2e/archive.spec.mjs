@@ -293,7 +293,7 @@ test('permanent owner builds the team, imports the catalogue and browses it virt
   await page.getByLabel('Role', { exact: true }).selectOption('admin');
   await page.getByRole('button', { name: 'Add to team' }).click();
   await expect(page.locator('.mini-row', { hasText: 'helper.admin@gmail.com' })).toBeVisible();
-  expect(h.ctx.fsGet_('admins/' + encodeURIComponent('helper.admin@gmail.com')).role).toBe('admin');
+  await expect.poll(() => h.ctx.fsGet_('admins/' + encodeURIComponent('helper.admin@gmail.com'))?.role).toBe('admin');
   await noStrayNull(page);
   await shot(page, '14-team');
 
