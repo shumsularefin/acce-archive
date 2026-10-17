@@ -4,11 +4,12 @@
    ============================================================ */
 import { CONFIG } from './config.js';
 import { $, h, icon, store, toast, initials, fill } from './lib/dom.js';
-import { fb, initFirebase, onSession, signOut, isStaff, getSettings, fs } from './services/firebase.js';
+import { fb, initFirebase, onSession, signOut, isStaff, getSettings, fs, guest } from './services/firebase.js';
 import { openQuickSearch } from './views/quicksearch.js';
 
 const ROUTES = [
   { re: /^\/?$/, view: () => import('./views/home.js'), nav: 'home' },
+  { re: /^\/library(?:\/(\w+))?((?:\/[^/]+)*)\/?$/, view: () => import('./views/library.js'), nav: 'home' },
   { re: /^\/browse\/(\w+)((?:\/[\w-]+)*)\/?$/, view: () => import('./views/browse.js'), nav: 'home' },
   { re: /^\/file\/([\w-]+)\/?$/, view: () => import('./views/file.js'), nav: 'home' },
   { re: /^\/search\/?$/, view: () => import('./views/search.js'), nav: 'search' },
@@ -187,12 +188,14 @@ function setMode(next) {
 
 function decide() {
   if (!fb.ready) return setMode('app');                                 // browse-only fallback
+  if (guest.get() && !fb.profile) return setMode('app');               // sign-in is misconfigured: keep browsing
   if (!fb.user) return setMode(CONFIG.requireSignIn ? 'signin' : 'app');
   if (!fb.profile) return setMode('profile');
   setMode('app');
 }
 
 window.addEventListener('hashchange', render);
+window.addEventListener('acce:guest', () => decide());
 
 (async function boot() {
   const ready = await Promise.race([initFirebase(), new Promise((r) => setTimeout(() => r(false), 9000))]);

@@ -72,10 +72,45 @@ test('staff status needs a verified email', async () => {
   await assertSucceeds(getDoc(doc(as('x', 'rev@gmail.com'), 'admins/rev@gmail.com')));
   await assertFails(getDoc(doc(as('bob', 'bob@gmail.com'), 'admins/rev@gmail.com')));
   await assertFails(setDoc(doc(as('bob', 'bob@gmail.com'), 'admins/bob@gmail.com'), { role: 'owner' }));
-  await assertFails(setDoc(doc(as('o', 'own@gmail.com'), 'admins/bob@gmail.com'), { role: 'owner' }), 'roles change only through the backend');
 });
 
-test('the public catalogue is readable by anyone and writable by no client', async () => {
+test('owners manage the team; the permanent owner is untouchable', async () => {
+  const root = as('root', 'muhammadshamsularefin01@gmail.com');
+  const member = (email, role, by) => ({ email, role, addedBy: by, addedAt: serverTimestamp(), notify: true });
+  // the permanent owner needs no admins document
+  await assertSucceeds(getDocs(collection(root, 'submissions')));
+  await assertSucceeds(setDoc(doc(root, 'admins/new.rev@gmail.com'), member('new.rev@gmail.com', 'reviewer', 'muhammadshamsularefin01@gmail.com')));
+  await assertSucceeds(setDoc(doc(root, 'admins/co.owner@gmail.com'), member('co.owner@gmail.com', 'owner', 'muhammadshamsularefin01@gmail.com')));
+  const co = as('co', 'co.owner@gmail.com');
+  await assertSucceeds(updateDoc(doc(co, 'admins/new.rev@gmail.com'), { role: 'admin' }));
+  await assertFails(setDoc(doc(co, 'admins/muhammadshamsularefin01@gmail.com'), member('muhammadshamsularefin01@gmail.com', 'reviewer', 'co.owner@gmail.com')));
+  await assertFails(deleteDoc(doc(co, 'admins/muhammadshamsularefin01@gmail.com')));
+  await assertFails(updateDoc(doc(co, 'admins/co.owner@gmail.com'), { role: 'admin' }), 'nobody changes their own role');
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'admins/x@gmail.com'), member('x@gmail.com', 'admin', 'adm@gmail.com')), 'admins cannot add team members');
+  await assertFails(setDoc(doc(root, 'admins/bad@gmail.com'), member('bad@gmail.com', 'superuser', 'muhammadshamsularefin01@gmail.com')));
+  await assertFails(setDoc(doc(root, 'admins/mismatch@gmail.com'), member('other@gmail.com', 'admin', 'muhammadshamsularefin01@gmail.com')));
+  await assertSucceeds(deleteDoc(doc(root, 'admins/new.rev@gmail.com')));
+  await assertFails(getDocs(collection(as('root', 'muhammadshamsularefin01@gmail.com', false), 'submissions')), 'needs a verified email');
+});
+
+test('admins curate the catalogue with a fixed record shape', async () => {
+  const item = { title: 'Treybal mass transfer', kind: 'file', collection: 'bsc', type: 'book', status: 'published', curated: true,
+    storage: { provider: 'drive', id: 'abc' }, file: { name: 't.pdf', size: 1, mime: 'application/pdf', sha256: '' }, curricula: ['Syllabus 2019', 'Syllabus 2023'], updatedAt: serverTimestamp() };
+  await assertFails(setDoc(doc(as('r', 'rev@gmail.com'), 'items/i1'), item), 'reviewers do not curate');
+  await assertFails(setDoc(doc(as('alice', 'alice@gmail.com'), 'items/i1'), item));
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'items/i1'), { ...item, storage: { provider: 'ftp', id: 'x' } }));
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'items/i1'), { ...item, status: 'secret' }));
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'items/i1'), { ...item, updatedAt: new Date(2000, 1, 1) }), 'updatedAt must be server time (drives sync)');
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'items/i1'), { ...item, evil: true }));
+  await assertSucceeds(setDoc(doc(as('a', 'adm@gmail.com'), 'items/i1'), item));
+  await assertSucceeds(setDoc(doc(as('a', 'adm@gmail.com'), 'items/i1'), { status: 'withdrawn', withdrawnReason: 'copyright', updatedAt: serverTimestamp() }, { merge: true }));
+  await assertFails(deleteDoc(doc(as('a', 'adm@gmail.com'), 'items/i1')), 'only owners delete records');
+  await assertSucceeds(setDoc(doc(as('a', 'adm@gmail.com'), 'config/catalog'), { live: true, updatedAt: serverTimestamp(), updatedBy: 'adm@gmail.com' }));
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'config/settings'), { uploadsOpen: false }));
+  await assertFails(setDoc(doc(as('r', 'rev@gmail.com'), 'config/catalog'), { live: false }));
+});
+
+test('the public catalogue is readable by anyone; malformed writes are refused', async () => {
   await assertSucceeds(getDoc(doc(anon(), 'items/f1')));
   await assertSucceeds(getDoc(doc(anon(), 'config/settings')));
   await assertFails(setDoc(doc(as('o', 'own@gmail.com'), 'items/f2'), { title: 'x' }));

@@ -14,6 +14,8 @@ const VERSION = '2.0.0';
 const MIB = 1024 * 1024;
 const CHUNK_BYTES = 5 * MIB;                    // multiple of 256 KiB, as Drive requires
 const ROLE_RANK = { reviewer: 1, admin: 2, owner: 3 };
+// Permanent owners: always owners, never removable. Keep in step with firestore.rules and CONFIG.rootOwners.
+const ROOT_OWNERS = ['muhammadshamsularefin01@gmail.com'];
 
 const DEFAULT_ROOTS = {
   bsc: '1IiI3ZcOMbLLjsHiaveuOeApGqW3O360I',
@@ -44,7 +46,8 @@ function cfg_() {
     roots: p.ROOT_FOLDERS ? JSON.parse(p.ROOT_FOLDERS) : DEFAULT_ROOTS,
     pendingFolder: p.PENDING_FOLDER_ID || '',
     withdrawnFolder: p.WITHDRAWN_FOLDER_ID || '',
-    owners: (p.OWNER_EMAILS || '').split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(String),
+    owners: ROOT_OWNERS.concat((p.OWNER_EMAILS || '').split(',').map(function (s) { return s.trim().toLowerCase(); }))
+      .filter(function (e, i, a) { return e && a.indexOf(e) === i; }),
     siteUrl: (p.SITE_URL || 'https://accearchive.web.app').replace(/\/$/, '')
   };
   return CFG_;
@@ -206,7 +209,9 @@ function validateMeta_(m) {
   out.examKind = pick_(m.examKind, TAXONOMY.examKinds, 'exam kind', false);
   out.instructors = clean_(m.instructors, 200);
   out.authors = clean_(m.authors, 200);
-  out.curriculum = clean_(m.curriculum, 40);
+  out.curriculum = clean_(m.curriculum, 120);
+  // one work can belong to several curricula ("Syllabus 2019, Syllabus 2023") without being duplicated
+  out.curricula = out.curriculum.split(',').map(function (c) { return c.trim(); }).filter(String).slice(0, 8);
   out.language = pick_(m.language, TAXONOMY.languages, 'language', false);
   out.description = clean_(m.description, 2000, true);
   out.tags = [];
@@ -442,9 +447,9 @@ function actReview_(req, user) {
 
   if (sub.kind === 'link') {
     const itemId = 'link-' + sub._id;
-    fsSet_('items/' + itemId, Object.assign({}, meta, {
-      kind: 'link', url: sub.link, folderId: folderId, folderPath: folderPath,
-      contributor: credit, submissionId: sub._id, approvedAt: now, status: 'published'
+    fsSet_('items/' + itemId, catalogItem_(meta, {
+      kind: 'link', storage: { provider: 'url', url: sub.link }, folderId: folderId, folderPath: folderPath,
+      contributor: credit, submissionId: sub._id, source: 'submission', approvedAt: now, updatedBy: user.email
     }));
     published = { itemId: itemId, folderId: folderId, folderPath: folderPath, url: sub.link };
   } else {
@@ -457,10 +462,10 @@ function actReview_(req, user) {
       properties: driveProps_(meta, sub._id),
       appProperties: { submissionId: sub._id, uid: sub.uid }
     }, folderId, cfg_().pendingFolder);
-    fsSet_('items/' + moved.id, Object.assign({}, meta, {
-      kind: 'file', fileName: name, mime: sub.file.mime, size: sub.file.size, sha256: sub.file.sha256,
-      driveId: moved.id, folderId: folderId, folderPath: folderPath,
-      contributor: credit, submissionId: sub._id, approvedAt: now, status: 'published'
+    fsSet_('items/' + moved.id, catalogItem_(meta, {
+      kind: 'file', file: { name: name, mime: sub.file.mime, size: sub.file.size, sha256: sub.file.sha256 },
+      storage: { provider: 'drive', id: moved.id }, folderId: folderId, folderPath: folderPath, legacyPath: folderPath,
+      contributor: credit, submissionId: sub._id, source: 'submission', approvedAt: now, updatedBy: user.email
     }));
     fsPatch_('fingerprints/' + sub.file.sha256, { status: 'published', driveId: moved.id, name: name });
     published = { fileId: moved.id, folderId: folderId, folderPath: folderPath, name: name, url: moved.webViewLink || '' };
@@ -511,11 +516,12 @@ function actAnnotate_(req, user) {
   if (existing) delete existing._id;
   driveUpdate_(f.id, { description: describe_(meta, existing ? existing.contributor : '', existing ? existing.submissionId : ''),
     properties: driveProps_(meta, existing ? existing.submissionId : '') });
-  fsSet_('items/' + f.id, Object.assign({}, existing || {}, meta, {
-    kind: 'file', fileName: f.name, mime: f.mimeType, size: Number(f.size || 0), sha256: f.sha256Checksum || '',
-    driveId: f.id, folderId: f.parents[0], folderPath: where.path.join(' / '),
-    contributor: existing ? existing.contributor : '', submissionId: existing ? existing.submissionId : '',
-    approvedAt: existing ? existing.approvedAt : new Date(), status: 'published', annotatedBy: user.email
+  fsSet_('items/' + f.id, catalogItem_(meta, {
+    kind: 'file', file: { name: f.name, mime: f.mimeType, size: Number(f.size || 0), sha256: f.sha256Checksum || '' },
+    storage: { provider: 'drive', id: f.id }, folderId: f.parents[0], folderPath: where.path.join(' / '), legacyPath: where.path.join(' / '),
+    contributor: existing ? existing.contributor || '' : '', submissionId: existing ? existing.submissionId || '' : '',
+    source: existing ? existing.source || 'import' : 'import', approvedAt: existing && existing.approvedAt ? existing.approvedAt : new Date(),
+    curated: true, updatedBy: user.email
   }));
   audit_(user, 'annotate', f.id, meta.title);
   return { fileId: f.id };
@@ -530,7 +536,8 @@ function actTakedown_(req, user) {
   if (!/^(link-)?[\w-]{1,100}$/.test(id)) fail_('bad_request', 'Unknown file.');
   if (req.reportId && !/^[A-Za-z0-9]{8,40}$/.test(String(req.reportId))) fail_('bad_request', 'Unknown report.');
   if (id.indexOf('link-') === 0) {
-    fsDelete_('items/' + id);
+    // keep the record (marked withdrawn) so every cached catalogue learns about it on its next sync
+    if (fsGet_('items/' + id)) fsPatch_('items/' + id, { status: 'withdrawn', withdrawnReason: reason, withdrawnAt: new Date(), updatedAt: new Date(), updatedBy: user.email });
   } else {
     const f = driveGet_(id, 'id,name,mimeType,parents,sha256Checksum');
     const where = f.parents && f.parents[0] && locateInRoots_(f.parents[0]);
@@ -538,7 +545,7 @@ function actTakedown_(req, user) {
     if (req.mode === 'delete') driveDelete_(f.id);
     else driveUpdate_(f.id, {}, cfg_().withdrawnFolder || fail_('misconfigured', 'Withdrawn folder missing; run setup().'), f.parents[0]);
     if (f.sha256Checksum) fsPatch_('fingerprints/' + f.sha256Checksum, { status: 'removed' });
-    if (fsGet_('items/' + f.id)) fsPatch_('items/' + f.id, { status: 'withdrawn', withdrawnReason: reason, withdrawnAt: new Date() });
+    if (fsGet_('items/' + f.id)) fsPatch_('items/' + f.id, { status: 'withdrawn', withdrawnReason: reason, withdrawnAt: new Date(), updatedAt: new Date(), updatedBy: user.email });
   }
   if (req.reportId) fsPatch_('reports/' + req.reportId, { status: 'resolved', resolution: 'taken down: ' + reason, resolvedBy: user.email, resolvedAt: new Date() });
   audit_(user, 'takedown', id, reason);
@@ -555,6 +562,7 @@ function actSetAdmin_(req, user) {
   const email = clean_(req.email, 200).toLowerCase();
   if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) fail_('invalid', 'Enter a valid email address.');
   if (email === user.email) fail_('invalid', 'You cannot change your own role.');
+  if (ROOT_OWNERS.indexOf(email) >= 0) fail_('invalid', 'That account is a permanent owner.');
   const folders = [cfg_().pendingFolder, cfg_().withdrawnFolder].filter(String);
   CacheService.getScriptCache().remove('role:' + email);
   CacheService.getScriptCache().remove('adminEmails');
@@ -573,6 +581,22 @@ function actSetAdmin_(req, user) {
 }
 
 /* ---------- helpers ---------- */
+/**
+ * Catalogue record (items/{id}): the archive's source of truth. Bytes live wherever
+ * `storage` points ({provider:'drive', id} | {provider:'r2', key} | {provider:'url', url}),
+ * so files can move between providers without changing links or metadata.
+ */
+function catalogItem_(meta, extra) {
+  const m = Object.assign({}, meta);
+  return Object.assign({
+    title: m.title, collection: m.collection, type: m.type, courseCode: m.courseCode, courseTitle: m.courseTitle,
+    level: m.level, session: m.session, examKind: m.examKind, examYear: m.examYear, instructors: m.instructors,
+    authors: m.authors, curriculum: m.curriculum, curricula: m.curricula || [], language: m.language,
+    description: m.description, tags: m.tags || [], rights: m.rights, credit: m.credit !== false,
+    status: 'published', curated: true, updatedAt: new Date()
+  }, extra);
+}
+
 function mustGetSubmission_(id) {
   if (typeof id !== 'string' || !/^[a-zA-Z0-9]{8,40}$/.test(id)) fail_('bad_request', 'Unknown submission.');
   const sub = fsGet_('submissions/' + id);

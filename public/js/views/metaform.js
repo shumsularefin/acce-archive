@@ -45,7 +45,7 @@ export async function buildMetaForm({ initial = {}, hideTitle = false, lockColle
     examYear: h('input', { class: 'input', id: `${id}-ey`, type: 'number', min: 1980, max: 2100, placeholder: String(new Date().getFullYear()) }),
     instructors: h('input', { class: 'input', id: `${id}-inst`, maxlength: 200, placeholder: 'Course teacher(s) at the time' }),
     authors: h('input', { class: 'input', id: `${id}-auth`, maxlength: 200, placeholder: 'Author(s) or editor(s)' }),
-    curriculum: h('input', { class: 'input', id: `${id}-cur`, maxlength: 40, placeholder: 'e.g. Syllabus 2019', list: `${id}-curricula` }),
+    curriculum: h('input', { class: 'input', id: `${id}-cur`, maxlength: 120, placeholder: 'e.g. Syllabus 2019, Syllabus 2023', list: `${id}-curricula` }),
     language: h('select', { class: 'input', id: `${id}-lang` }, opt(TAXONOMY.languages, 'Language')),
     tags: h('input', { class: 'input', id: `${id}-tags`, maxlength: 400, placeholder: 'heat transfer, distillation, lab 3' }),
     description: h('textarea', { class: 'input', id: `${id}-desc`, rows: 3, maxlength: 2000, placeholder: 'What is inside? Chapters, which questions are solved, anything missing…' })
@@ -73,7 +73,7 @@ export async function buildMetaForm({ initial = {}, hideTitle = false, lockColle
     h('details', { class: 'more', open: staff },
       h('summary', { text: 'More details (optional)' }),
       h('div', { class: 'grid-2' }, field('Course teacher(s)', f.instructors), field('Author(s)', f.authors)),
-      h('div', { class: 'grid-2' }, field('Curriculum / syllabus version', f.curriculum), field('Language', f.language)),
+      h('div', { class: 'grid-2' }, field('Curriculum version(s), comma separated', f.curriculum), field('Language', f.language)),
       field('Keywords (comma separated)', f.tags),
       field('Description', f.description)),
     staff ? null : h('fieldset', { class: 'field' }, h('legend', { class: 'label', text: 'Rights' }), rights),

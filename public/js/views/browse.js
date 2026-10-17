@@ -8,6 +8,7 @@ import { listFolder, folderMeta, isFolder, downloadUrl, cachedIndex, clearListin
 import { linkItemsIn, isAdmin } from '../services/firebase.js';
 import { call, backendReady } from '../services/backend.js';
 import { openPreview, fileIcon } from './preview.js';
+import { recordFor, toEntry, syncCatalog } from '../services/catalog.js';
 
 let sort = store.get('acce.sort', { key: 'name', dir: 1 });
 
@@ -80,7 +81,10 @@ export async function render({ root, params, query, navigate }) {
 
   function open(f, i) {
     if (isFolder(f)) navigate(`${hrefFor(ids.length - 1)}/${f.id}`);
-    else openPreview({ ...f, root: key, path: [] }, { onChanged: () => load(true) });
+    else {
+      const rec = recordFor(f.id);    // catalogued? show its record; links and metadata come from the catalogue
+      openPreview(rec?.status === 'published' ? { ...toEntry(rec), webContentLink: f.webContentLink, webViewLink: f.webViewLink } : { ...f, root: key, path: [] }, { onChanged: () => load(true) });
+    }
   }
 
   function paint() {
@@ -155,6 +159,7 @@ export async function render({ root, params, query, navigate }) {
     else location.hash = back.getAttribute('href');
   };
   document.addEventListener('keydown', onKey);
+  syncCatalog().catch(() => {});   // so previews can show catalogue records
   load();
   return () => { alive = false; document.removeEventListener('keydown', onKey); };
 }

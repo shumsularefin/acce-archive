@@ -25,6 +25,26 @@ export const CONFIG = {
   // Local development only, e.g. { auth: 'http://127.0.0.1:9099', firestore: { host: '127.0.0.1', port: 8080 } }
   emulators: null,
 
+  // Permanent owners: always owners, cannot be removed from the dashboard; they add everyone else.
+  // Keep in step with firestore.rules (rootOwners) and apps-script/Code.js (ROOT_OWNERS).
+  rootOwners: ['muhammadshamsularefin01@gmail.com'],
+
+  // Where catalogue items keep their bytes. Each item says which provider holds it, so
+  // providers can be mixed and files migrated without changing links or metadata.
+  storage: {
+    r2PublicBase: ''          // e.g. 'https://files.accearchive.example' (Cloudflare R2 public bucket / custom domain)
+  },
+
+  // Virtual browsing: the levels under each collection, generated from catalogue metadata.
+  library: {
+    default: ['level', 'courseCode', 'type'],
+    qbank: ['examYear', 'courseCode', 'examKind'],
+    misc: ['type', 'session']
+  },
+
+  // Recognised course-code prefixes, used to infer metadata for files imported from Drive.
+  coursePrefixes: ['ACCE', 'ACE', 'CHE', 'CHEM', 'MATH', 'PHY', 'PHYS', 'EEE', 'CSE', 'ME', 'STAT', 'ENG', 'HUM', 'ECO', 'BIO', 'GED', 'BAN'],
+
   // Visitors must sign in with Google before browsing. Browsing still works if Firebase is unreachable.
   requireSignIn: true,
 

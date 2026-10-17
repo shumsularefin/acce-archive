@@ -6,22 +6,26 @@ Departmental archive for the Department of Applied Chemistry and Chemical Engine
 
 ## Features
 
-- **Browse** the four Drive collections, as before: breadcrumbs, sorting, filtering, list or grid view, and shareable deep links to any folder or file.
+- **Catalogue-first.** Every work is one record (details plus a pointer to where its bytes live: Google Drive, Cloudflare R2 or a link). Browsing, search and permalinks are built from the records, so files can be re-filed or moved between storage providers without breaking anything.
+- **Virtual library:** collection → year/term → course → material type, generated from metadata, with a curriculum filter. One work can sit under several curricula without duplicates.
+- **Import / sync from Drive:** existing files are catalogued automatically, with details inferred from file and folder names, then refined by staff.
+- **Browse** the original Drive folders as before: breadcrumbs, sorting, filtering, list or grid view, and shareable deep links to any folder or file.
 - **Search everything** at once, instantly, with facets (collection, material type, format, year) and course-code-aware matching. Press <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere.
 - **Preview** files inline, then download, open in Drive, copy a permalink, copy a citation, or report a problem.
 - **Google sign-in** with a one-time profile (affiliation, session and student ID, validated as before).
 - **Contribute:** drag-and-drop batch uploads or links, a guided metadata form, a rights declaration, resumable chunked uploads with progress, and duplicate detection before upload.
 - **Review dashboard:** queue with inline preview, metadata correction, a folder picker with per-course filing suggestions, consistent renaming, approve or decline with a note, and email notices to contributors.
-- **Curation:** edit any file's catalogue record, take files down, handle reports, keep a course catalogue across curriculum changes, manage team roles, block abusive contributors, and view a full audit log.
+- **Curation:** edit any catalogue record, take files down, handle reports, keep a course catalogue across curriculum changes, block abusive contributors, and view a full audit log.
+- **Team roles:** a permanent owner (muhammadshamsularefin01@gmail.com) adds owners, **admins** (curation) and **reviewers** (moderation) from the dashboard.
 - **Storage management:** quota meter, largest files, size and rate limits, automatic upload pause before the quota runs out, and nightly clean-up.
 - **Dark and light themes**, phone layout with a bottom tab bar, keyboard shortcuts, reduced-motion support, and installable as an app.
 
 ## How it fits together
 
 ```
-Browser ──(API key, read-only)──────────────► public Google Drive folders
-   │
-   ├──(Firebase Auth + Firestore SDK)───────► profiles, roles, submissions, catalogue
+Browser ──(Firebase Auth + Firestore SDK)───► catalogue (source of truth), profiles, roles, submissions
+   │            each record points at its bytes: Drive · R2 · URL
+   ├──(API key, read-only)──────────────────► public Google Drive folders (files, folder view, import)
    │
    └──(ID token)──► Apps Script web app ────► private Pending folder → approved into public folders
                     (runs as the Drive owner)

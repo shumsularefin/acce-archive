@@ -136,7 +136,11 @@ test('reviewer approves into a public folder; record travels with the file', () 
   assert.match(f.description, /Contributed by: User u1/);
   const item = h.db.get(`items/${f.id}`);
   assert.equal(item.collection, 'bsc');
-  assert.equal(h.db.get(`fingerprints/${item.sha256}`).status, 'published');
+  assert.deepEqual(item.storage, { provider: 'drive', id: f.id });
+  assert.equal(item.file.name, 'ACCE-3101 - Thermo notes.pdf');
+  assert.equal(item.status, 'published');
+  assert.ok(item.updatedAt instanceof Date || item.updatedAt, 'updatedAt drives catalogue sync');
+  assert.equal(h.db.get(`fingerprints/${item.file.sha256}`).status, 'published');
   assert.equal(h.db.get('courses/ACCE-3101').destinations.bsc.folderId, f.parents[0]);
   const sub = h.db.get(`submissions/${submissionId}`);
   assert.equal(sub.reviewer.email, 'rev@gmail.com');
@@ -176,7 +180,11 @@ test('link submissions use no storage and publish as catalogue items', () => {
   assert.throws(() => h.call({ action: 'init', idToken: t, kind: 'link', link: 'http://insecure.example', meta: META }), /https/);
   const { submissionId } = h.call({ action: 'init', idToken: t, kind: 'link', link: 'https://nptel.ac.in/courses/103', meta: { ...META, type: 'media' } });
   const out = h.call({ action: 'review', idToken: owner, submissionId, decision: 'approve', folderId: 'root-bsc', meta: { ...META, type: 'media' } });
-  assert.equal(h.db.get(`items/${out.published.itemId}`).url, 'https://nptel.ac.in/courses/103');
+  const item = h.db.get(`items/${out.published.itemId}`);
+  assert.deepEqual(item.storage, { provider: 'url', url: 'https://nptel.ac.in/courses/103' });
+  assert.equal(item.kind, 'link');
+  h.call({ action: 'takedown', idToken: owner, fileId: out.published.itemId, reason: 'Link is dead now' });
+  assert.equal(h.db.get(`items/${out.published.itemId}`).status, 'withdrawn', 'kept as a tombstone for catalogue sync');
 });
 
 test('limits: closed submissions, quota reserve, open-submission cap', () => {
@@ -223,4 +231,20 @@ test('maintenance indexes legacy checksums and removes orphans', () => {
   const c = h.call({ action: 'maintenance', idToken: owner, task: 'cleanup' });
   assert.equal(c.orphansDeleted, 1);
   assert.equal(h.drive.has('orphan'), false);
+});
+
+test('the permanent owner is always an owner and cannot be removed', () => {
+  const h = createHarness();
+  const root = h.addUser('root', 'muhammadshamsularefin01@gmail.com');
+  assert.equal(h.call({ action: 'whoami', idToken: root }).role, 'owner');
+  h.call({ action: 'setAdmin', idToken: root, email: 'second.owner@gmail.com', role: 'owner' });
+  const second = h.addUser('o2', 'second.owner@gmail.com');
+  assert.throws(() => h.call({ action: 'setAdmin', idToken: second, email: 'muhammadshamsularefin01@gmail.com', role: null }), /permanent owner/);
+  assert.throws(() => h.call({ action: 'setAdmin', idToken: second, email: 'muhammadshamsularefin01@gmail.com', role: 'reviewer' }), /permanent owner/);
+});
+
+test('one work can belong to several curricula', () => {
+  const { ctx } = createHarness();
+  const m = JSON.parse(JSON.stringify(ctx.validateMeta_({ ...META, curriculum: 'Syllabus 2019, Syllabus 2023' })));
+  assert.deepEqual(m.curricula, ['Syllabus 2019', 'Syllabus 2023']);
 });

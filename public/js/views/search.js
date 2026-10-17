@@ -7,16 +7,28 @@ import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, fmtSize, fmtDate, debounce, relTime, emptyState, plural, fill } from '../lib/dom.js';
 import { getIndex, KIND_LABEL } from '../services/drive.js';
 import { allLinkItems } from '../services/firebase.js';
-import { buildDocs, search, facets, highlight } from '../lib/search.js';
+import { buildDocs, buildCatalogDocs, search, facets, highlight } from '../lib/search.js';
+import { loadCatalog, catalogStamp, courses, toEntry } from '../services/catalog.js';
 import { openPreview, fileIcon } from './preview.js';
 
 const PAGE = 40;
-let docsCache = null, docsStamp = 0;
+let docsCache = null, docsStamp = 0, docsSource = '';
 
+/** Search documents from the catalogue; before anything is catalogued, from a crawl of the Drive folders. */
 async function loadDocs(fresh, onProgress) {
+  const items = await loadCatalog(fresh ? { full: true } : undefined);
+  if (items.length) {
+    const stamp = catalogStamp();
+    if (!docsCache || docsSource !== 'catalog' || docsStamp !== stamp) {
+      const cmap = await courses();
+      docsCache = buildCatalogDocs(items.map((i) => toEntry(i, cmap)));
+      docsStamp = stamp; docsSource = 'catalog';
+    }
+    return { docs: docsCache, idx: { t: stamp }, source: 'catalog' };
+  }
   const [idx, links] = await Promise.all([getIndex({ fresh, onProgress }), allLinkItems()]);
-  if (!docsCache || fresh || docsStamp !== idx.t) { docsCache = buildDocs(idx, links); docsStamp = idx.t; }
-  return { docs: docsCache, idx };
+  if (!docsCache || fresh || docsSource !== 'drive' || docsStamp !== idx.t) { docsCache = buildDocs(idx, links); docsStamp = idx.t; docsSource = 'drive'; }
+  return { docs: docsCache, idx, source: 'drive' };
 }
 export { loadDocs };
 
@@ -34,7 +46,7 @@ export function render({ root, query }) {
   const facetBox = h('aside', { class: 'facets glass' });
   const results = h('div', { class: 'results' });
   const summary = h('div', { class: 'results-head' });
-  const reindex = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onclick: () => boot(true) }, icon('refresh'), 'Re-index');
+  const reindex = h('button', { class: 'btn btn-quiet btn-sm', type: 'button', onclick: () => boot(true) }, icon('refresh'), 'Refresh');
 
   root.append(h('section', { class: 'page search-page' },
     h('form', { class: 'hero-search glass', role: 'search', onsubmit: (e) => { e.preventDefault(); input.blur(); } }, icon('search'), input),
@@ -67,7 +79,7 @@ export function render({ root, query }) {
     fill(summary, 
       h('p', {}, h('strong', { text: list.length.toLocaleString() }), ` result${list.length === 1 ? '' : 's'}`,
         state.q ? [' for ', h('q', { text: state.q })] : null,
-        h('span', { class: 'muted small', text: ` · indexed ${relTime(idxTime)}` })),
+        h('span', { class: 'muted small', text: ` · updated ${relTime(idxTime)}` })),
       h('div', { class: 'results-tools' }, sortSel, reindex));
     if (!list.length) {
       fill(results, emptyState('search', 'No matches', 'Try fewer words, a course code like ACCE-3101, or clear the filters.',
@@ -81,12 +93,13 @@ export function render({ root, query }) {
   function resultRow(d, tokens, i) {
     const f = d.f;
     const title = f.properties?.acce_title;
+    const sub = f.item ? (f.fileName && f.fileName !== f.name ? f.fileName : '') : (title ? f.name : '');
     const href = f.kind === 'link' ? '#' : `#/file/${f.id}`;
     return h('a', { class: 'result', href, style: { '--i': Math.min(i, 20) }, onclick: (e) => { e.preventDefault(); openPreview(f); } },
       fileIcon(f),
       h('div', { class: 'result-main' },
         h('div', { class: 'result-name' }, marked(title || f.name, tokens)),
-        title ? h('div', { class: 'result-sub', text: f.name }) : null,
+        sub ? h('div', { class: 'result-sub', text: sub }) : null,
         h('div', { class: 'result-path' }, marked(f.path.join(' / '), tokens))),
       h('div', { class: 'result-meta' },
         d.type ? h('span', { class: 'pill', text: TAXONOMY.types[d.type] }) : h('span', { class: 'pill pill-quiet', text: KIND_LABEL[d.kind] }),

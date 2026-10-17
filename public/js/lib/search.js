@@ -37,6 +37,19 @@ export function buildDocs(index, links = []) {
   return docs;
 }
 
+/** Search documents from catalogue entries (services/catalog.js toEntry). */
+export function buildCatalogDocs(entries) {
+  return entries.map((e) => {
+    const it = e.item;
+    const rec = [it.courseCode, it.courseTitle, (it.tags || []).join(' '), it.session, (it.curricula || []).join(' '), it.instructors, it.authors,
+      it.description, TAXONOMY.types[it.type], TAXONOMY.examKinds[it.examKind], e.fileName].filter(Boolean).join(' ');
+    const d = doc(e, it.title, rec, e.path.join(' '));
+    d.year = it.examYear ? String(it.examYear) : yearOf({ name: e.fileName, path: e.path });
+    d.type = it.type || '';
+    return d;
+  });
+}
+
 function doc(f, name, rec, path) {
   return {
     f, kind: kindOf(f), year: yearOf(f), type: typeOf(f),

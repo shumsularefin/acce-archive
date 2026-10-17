@@ -215,7 +215,7 @@ test('owner reviews and publishes; contributor sees it published', async ({ page
   await noStrayNull(page);
   await shot(page, '09-review');
   await page.getByRole('button', { name: 'Approve & publish' }).click();
-  await expect(page.locator('.toast-ok')).toContainText('Published to BSc archive / Year 1 Term 1');
+  await expect(page.locator('.toast-ok', { hasText: 'Published to BSc archive / Year 1 Term 1' })).toBeVisible();
 
   const published = [...h.drive.values()].find((f) => f.name === 'ACCE-1101 - mass transfer notes.pdf');
   expect(published.parents).toEqual(['y1']);
@@ -246,6 +246,72 @@ test('contributor sees the decision; layout holds on a phone', async ({ page }) 
   await shot(page, '11-mobile-home');
   await page.goto('/#/admin');
   await expect(page.getByRole('heading', { name: 'Staff only' })).toBeVisible();
+});
+
+test('permanent owner builds the team, imports the catalogue and browses it virtually', async ({ page }) => {
+  await wire(page);
+  await page.goto('/');
+  await signIn(page, { sub: 'root', email: 'muhammadshamsularefin01@gmail.com', email_verified: true, name: 'Muhammad Shamsul Arefin' });
+  await page.locator('[data-k="faculty"]').click();
+  await page.getByRole('button', { name: 'Enter the archive' }).click();
+  await expect(page.getByRole('link', { name: /Dashboard/ }).first()).toBeVisible();
+
+  // team: permanent owner pinned, owners add admins/reviewers without the upload backend
+  await page.goto('/#/admin/people');
+  await expect(page.locator('.mini-row', { hasText: 'muhammadshamsularefin01@gmail.com' })).toContainText('Permanent owner');
+  await page.getByLabel('Gmail address to add').fill('Helper.Admin@gmail.com');
+  await page.getByLabel('Role', { exact: true }).selectOption('admin');
+  await page.getByRole('button', { name: 'Add to team' }).click();
+  await expect(page.locator('.mini-row', { hasText: 'helper.admin@gmail.com' })).toBeVisible();
+  expect(h.ctx.fsGet_('admins/' + encodeURIComponent('helper.admin@gmail.com')).role).toBe('admin');
+  await noStrayNull(page);
+  await shot(page, '14-team');
+
+  // catalogue: import the Drive folders; the approved submission keeps its curated record
+  await page.goto('/#/admin/catalogue');
+  await page.getByRole('button', { name: 'Import / sync from Drive' }).click();
+  await expect(page.locator('.console')).toContainText('Done.', { timeout: 30_000 });
+  await expect(page.locator('.console')).toContainText('10 new records');
+  await expect(page.locator('input[type=checkbox]').first()).toBeChecked();
+  await shot(page, '15-catalogue');
+
+  // home now opens the virtual library
+  await page.goto('/#/');
+  await expect(page.locator('.program-box[data-key="bsc"]')).toHaveAttribute('href', '#/library/bsc');
+  await expect(page.locator('[data-count="msc"]')).toHaveText('6 items');
+  await page.locator('.program-box[data-key="bsc"]').click();
+  await expect(page.locator('.lib-group', { hasText: 'Year 1 · Term 1' })).toBeVisible();
+  await expect(page.locator('.lib-group', { hasText: 'General' })).toBeVisible();
+  await page.locator('.lib-group', { hasText: 'Year 1 · Term 1' }).click();
+  await page.locator('.lib-group', { hasText: 'ACCE-1101 · Chemical Engineering Thermodynamics' }).click();
+  await expect(page).toHaveURL(/#\/library\/bsc\/1-1\/ACCE-1101$/);
+  await expect(page.locator('.result')).toHaveCount(2);     // imported lecture + approved submission
+  await noStrayNull(page);
+  await shot(page, '16-library');
+
+  // one file, two curricula, no duplicate
+  await page.locator('.result', { hasText: 'Thermodynamics lecture 1-6' }).click();
+  await expect(page.locator('.pv-side')).toContainText('Google Drive');
+  await page.getByRole('button', { name: 'Edit record' }).click();
+  await page.locator('dialog .metaform input[list$="-curricula"]').fill('Syllabus 2019, Syllabus 2023');
+  await page.getByRole('button', { name: 'Save record' }).click();
+  await expect(page.locator('.toast-ok', { hasText: 'Record saved' })).toBeVisible();
+  await expect(page.locator('.toast-error')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const curSel = page.getByLabel('Curriculum');
+  await expect(curSel).toBeVisible();
+  await curSel.selectOption('Syllabus 2023');
+  await expect(page.locator('.result')).toHaveCount(1);
+  await curSel.selectOption('Syllabus 2019');
+  await expect(page.locator('.result')).toHaveCount(1);
+  await expect(page.locator('.result')).toContainText('Syllabus 2019');
+
+  // search runs on the catalogue; permalinks resolve through it
+  await page.goto('/#/search?q=acce3101');
+  await expect(page.locator('.result').first()).toContainText('Chemical Reaction Engineering term final');
+  await page.goto('/#/file/f3');
+  await expect(page).toHaveURL(/#\/library\/qbank\/2023\/ACCE-3101\/final\?item=f3/);
+  await expect(page.locator('dialog.modal-preview')).toBeVisible();
 });
 
 test('without Firebase the archive still browses (graceful fallback)', async ({ page }) => {

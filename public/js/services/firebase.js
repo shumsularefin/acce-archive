@@ -57,7 +57,7 @@ export function initFirebase() {
           if (first) { first = false; resolve(); }
         });
       });
-      A.getRedirectResult(fb.auth).catch((e) => { fb.error = friendlyAuthError(e); emit(); });
+      A.getRedirectResult(fb.auth).catch((e) => { fb.error = friendlyAuthError(e); fb.errorCode = e.code; emit(); });
     } catch (e) {
       console.warn('Firebase unavailable:', e);
       fb.error = e.message;
@@ -82,6 +82,7 @@ async function loadSession(user) {
   ]);
   if (p.status === 'fulfilled' && p.value.exists()) fb.profile = p.value.data();
   if (a.status === 'fulfilled' && a.value?.exists?.()) fb.role = a.value.data().role || null;
+  if (user.emailVerified && CONFIG.rootOwners.includes(email)) fb.role = 'owner';
   if (fb.profile) touchVisit(user.uid);
 }
 
@@ -102,15 +103,28 @@ export async function signIn() {
       return A.signInWithRedirect(fb.auth, provider);
     }
     if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
-    throw new Error(friendlyAuthError(e));
+    const err = new Error(friendlyAuthError(e));
+    err.code = e.code;
+    throw err;
   }
 }
 
 export const signOut = () => A.signOut(fb.auth);
 export const idToken = () => fb.user ? fb.user.getIdToken() : Promise.reject(new Error('Please sign in first.'));
 
+/** Errors that mean the Firebase project is not set up yet, rather than anything the visitor did. */
+export const SETUP_ERRORS = ['auth/operation-not-allowed', 'auth/unauthorized-domain', 'auth/configuration-not-found', 'auth/invalid-api-key',
+  'auth/api-key-not-valid.-please-pass-a-valid-api-key.', 'auth/internal-error', 'not-found', 'failed-precondition', 'unavailable'];
+
+/** Visitors can keep browsing (session only) when sign-in is broken by configuration. */
+export const guest = {
+  get: () => { try { return sessionStorage.getItem('acce.guest') === '1'; } catch { return false; } },
+  enter: () => { try { sessionStorage.setItem('acce.guest', '1'); } catch {} window.dispatchEvent(new Event('acce:guest')); }
+};
+
 function friendlyAuthError(e) {
   const map = {
+    'auth/configuration-not-found': 'Google sign-in is not enabled for this project yet.',
     'auth/unauthorized-domain': 'This web address is not authorised for sign-in yet (Firebase > Authentication > Settings > Authorised domains).',
     'auth/operation-not-allowed': 'Google sign-in is not enabled for this project yet.',
     'auth/network-request-failed': 'Network problem - check your connection and try again.',
@@ -143,6 +157,7 @@ export async function saveProfile(data) {
 export const isStaff = () => !!fb.role;
 export const isAdmin = () => fb.role === 'admin' || fb.role === 'owner';
 export const isOwner = () => fb.role === 'owner';
+export const isRootOwner = (email) => CONFIG.rootOwners.includes(String(email || '').toLowerCase());
 
 /* ---------- small Firestore conveniences ---------- */
 export function docs(snap) { return snap.docs.map((d) => ({ id: d.id, ...d.data() })); }

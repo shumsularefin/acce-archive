@@ -7,7 +7,7 @@
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, fmtSize, fmtDate, relTime, plural, toast, ask, modal, emptyState, skeletonRows, copyText, fill } from '../lib/dom.js';
-import { fb, fs, docs, isAdmin, isOwner } from '../services/firebase.js';
+import { fb, fs, docs, isAdmin, isOwner, isRootOwner } from '../services/firebase.js';
 import { call, backendReady } from '../services/backend.js';
 import { listFolder, isFolder, previewUrl, getIndex, cachedIndex, clearListingCache } from '../services/drive.js';
 import { buildDocs, search } from '../lib/search.js';
@@ -20,6 +20,7 @@ const TABS = [
   { key: 'review', label: 'Review queue', ic: 'inbox' },
   { key: 'submissions', label: 'Submissions', ic: 'layers' },
   { key: 'reports', label: 'Reports', ic: 'flag' },
+  { key: 'catalogue', label: 'Catalogue', ic: 'database', admin: true },
   { key: 'courses', label: 'Courses', ic: 'book', admin: true },
   { key: 'people', label: 'People', ic: 'users', admin: true },
   { key: 'settings', label: 'Settings', ic: 'settings', admin: true },
@@ -49,7 +50,7 @@ export function render({ root, params, navigate }) {
   }, () => {}));
 
   const ctx = { panel, navigate, F, sub: params[1], add: (fn) => cleanups.push(fn) };
-  ({ overview, review, submissions, reports, courses, people, settings, activity })[tab](ctx);
+  ({ overview, review, submissions, reports, catalogue, courses, people, settings, activity })[tab](ctx);
   return () => cleanups.forEach((fn) => { try { fn(); } catch {} });
 }
 
@@ -349,6 +350,69 @@ function reports({ panel, F, add }) {
   }
 }
 
+/* ================= catalogue ================= */
+async function catalogue({ panel }) {
+  const { syncCatalog, allRecords, importFromDrive, toEntry, courses: loadCourses, catalogLive, setCatalogLive } = await import('../services/catalog.js');
+  const { PROVIDER_LABEL } = await import('../services/storage.js');
+  const statsBox = h('div', { class: 'tiles' });
+  const out = h('pre', { class: 'console', hidden: true });
+  const lists = h('div', { class: 'grid-2 gap' });
+  const run = h('button', { class: 'btn btn-primary', type: 'button' }, icon('refresh'), 'Import / sync from Drive');
+  const liveBox = h('input', { type: 'checkbox', onchange: async (e) => {
+    try { await setCatalogLive(e.target.checked); toast(e.target.checked ? 'Browsing and search now use the catalogue' : 'Browsing and search use the Drive folders again', 'ok'); }
+    catch (x) { e.target.checked = !e.target.checked; toast(x.message, 'error'); }
+  } });
+
+  panel.append(
+    h('div', { class: 'card glass stack' },
+      h('h2', {}, icon('database'), 'The catalogue is the source of truth'),
+      h('p', { class: 'muted small', text: 'Every work has one record with its details and a pointer to where its bytes live (Google Drive today; Cloudflare R2 or an external link work too). Browsing, search and permalinks are built from these records, so re-filing is a metadata edit and files can change storage without breaking links.' }),
+      h('p', { class: 'muted small', text: 'Import / sync crawls the public Drive folders: new files get a record with details inferred from their names and folders (marked “needs review”), renamed or moved files are updated, and files gone from Drive are marked missing. Records you have edited are never overwritten. Safe to run any time.' }),
+      h('div', { class: 'row-between' }, h('label', { class: 'check' }, liveBox, h('span', { text: 'Use the catalogue for browsing and search (switched on by the first import)' })), run), out),
+    statsBox, lists);
+
+  async function draw() {
+    await syncCatalog().catch(() => {});
+    liveBox.checked = catalogLive();
+    const all = allRecords();
+    const cmap = await loadCourses();
+    const n = (f) => all.filter(f).length;
+    const providers = {};
+    all.forEach((i) => { const p = i.storage?.provider || '?'; providers[p] = (providers[p] || 0) + 1; });
+    fill(statsBox,
+      statTile('Published', n((i) => i.status === 'published'), 'check', 'ok'),
+      statTile('Needs review', n((i) => i.status === 'published' && i.curated === false), 'edit', 'warn'),
+      statTile('Missing from storage', n((i) => i.status === 'missing'), 'alert', 'bad'),
+      statTile('Withdrawn', n((i) => i.status === 'withdrawn'), 'back', 'warn'));
+    const listCard = (heading, ic, rows, empty) => h('div', { class: 'card glass' }, h('h2', {}, icon(ic), heading),
+      rows.length ? h('div', { class: 'mini-list' }, rows.slice(0, 40).map((i) => h('button', { type: 'button', class: 'mini-row', onclick: () => openPreview(toEntry(i, cmap), { onChanged: draw }) },
+        fileIcon(toEntry(i, cmap)), h('span', { class: 'ellipsis', text: i.title }), h('b', { text: TAXONOMY.types[i.type] || i.type || '' })))) : h('p', { class: 'muted small', text: empty }),
+      rows.length > 40 ? h('p', { class: 'fine', text: `…and ${rows.length - 40} more. Use the Library or Search to work through them.` }) : null);
+    fill(lists,
+      listCard('Needs review', 'edit', all.filter((i) => i.status === 'published' && i.curated === false), 'Every record has been checked by staff.'),
+      h('div', { class: 'stack' },
+        listCard('Missing from storage', 'alert', all.filter((i) => i.status === 'missing'), 'Every record points at a file that exists.'),
+        h('div', { class: 'card glass' }, h('h2', {}, icon('layers'), 'Storage providers'),
+          h('div', { class: 'mini-list' }, Object.entries(providers).map(([p, c]) => h('div', { class: 'mini-row' }, h('span', { class: 'ellipsis', text: PROVIDER_LABEL[p] || p }), h('b', { text: plural(c, 'record') })))))));
+  }
+
+  run.onclick = async () => {
+    run.disabled = true; out.hidden = false; out.textContent = 'Crawling the Drive folders…';
+    try {
+      const r = await importFromDrive((p) => { out.textContent = p.phase === 'crawl' ? `Crawling the Drive folders… ${p.files} files found` : `Writing records… ${p.done}/${p.total}`; });
+      out.textContent = `Done. ${r.files} files in Drive: ${r.added} new records, ${r.updated} updated, ${r.missing} marked missing.`;
+      toast('Catalogue synced', 'ok');
+      draw();
+    } catch (e) { out.textContent = e.code === 'permission-denied' ? 'Only admins can write the catalogue (check that the Firestore rules are deployed).' : e.message; }
+    run.disabled = false;
+  };
+  draw();
+}
+
+function statTile(label, value, ic, tone) {
+  return h('div', { class: `tile-stat card glass t-${tone}` }, h('span', { class: 'ts-ic' }, icon(ic)), h('strong', { text: String(value) }), h('span', { text: label }));
+}
+
 /* ================= courses ================= */
 function courses({ panel, F, add }) {
   const body = h('div', { class: 'table-card glass' }, ...skeletonRows(5, 4));
@@ -410,31 +474,49 @@ function people({ panel, F, add }) {
   const users = h('div', { class: 'table-card glass' }, ...skeletonRows(6, 4));
   panel.append(team, h('h2', { class: 'h-sub', text: 'Recent visitors & contributors' }), users);
 
+  const ROLES = {
+    owner: 'Owner: manages the team and settings, plus everything below',
+    admin: 'Admin: curates the catalogue, imports from Drive, takes material down, manages courses and contributors, plus reviewing',
+    reviewer: 'Reviewer: approves or declines submissions and handles reports'
+  };
+  const me = fb.user.email.toLowerCase();
   add(F.onSnapshot(F.collection(fb.db, 'admins'), (snap) => {
-    const rows = docs(snap);
+    const rank = { owner: 0, admin: 1, reviewer: 2 };
+    const rows = docs(snap).filter((r) => !isRootOwner(r.id)).sort((a, b) => rank[a.role] - rank[b.role] || a.id.localeCompare(b.id));
     const roleSel = (r) => {
-      const s = h('select', { class: 'input input-sm', disabled: !isOwner() || r.email === fb.user.email.toLowerCase(), onchange: () => setRole(r.email, s.value) },
-        ['reviewer', 'admin', 'owner'].map((x) => h('option', { value: x, text: x })));
-      s.value = r.role;
-      return s;
+      const sel = h('select', { class: 'input input-sm', 'aria-label': `Role of ${r.id}`, disabled: !isOwner() || r.id === me, onchange: () => setRole(r.id, sel.value) },
+        Object.keys(ROLES).map((x) => h('option', { value: x, text: x })));
+      sel.value = r.role;
+      return sel;
     };
     fill(team, h('h2', {}, icon('shield'), 'Archive team'),
-      h('p', { class: 'muted small', text: 'Reviewers approve and decline. Admins also curate, take down and manage courses. Owners manage the team and settings.' }),
-      h('div', { class: 'mini-list' }, rows.map((r) => h('div', { class: 'mini-row' }, icon('user'), h('span', { class: 'ellipsis', text: r.email }), roleSel(r),
-        isOwner() && r.email !== fb.user.email.toLowerCase() ? h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': `Remove ${r.email}`, onclick: () => setRole(r.email, null) }, icon('x')) : null))),
-      isOwner() && backendReady() ? addMember() : null);
+      h('ul', { class: 'role-key' }, Object.entries(ROLES).map(([k, v]) => h('li', {}, h('span', { class: `pill ${k === 'owner' ? 'pill-ok' : k === 'admin' ? 'pill-warn' : 'pill-quiet'}`, text: k }), h('span', { class: 'muted small', text: v.split(': ')[1] })))),
+      h('div', { class: 'mini-list' },
+        CONFIG.rootOwners.map((e) => h('div', { class: 'mini-row' }, icon('lock'), h('span', { class: 'ellipsis', text: e }), h('span', { class: 'pill pill-ok', text: 'Permanent owner' }))),
+        rows.map((r) => h('div', { class: 'mini-row' }, icon('user'), h('span', { class: 'ellipsis', text: r.id }), roleSel(r),
+          isOwner() && r.id !== me ? h('button', { class: 'icon-btn sm', type: 'button', 'aria-label': `Remove ${r.id}`, onclick: () => setRole(r.id, null) }, icon('x')) : null))),
+      isOwner() ? addMember() : h('p', { class: 'fine', text: 'Only owners can change the team.' }));
   }, (e) => team.append(h('p', { class: 'danger', text: e.message }))));
 
   function addMember() {
-    const email = h('input', { class: 'input', type: 'email', placeholder: 'name@gmail.com' });
-    const role = h('select', { class: 'input' }, ['reviewer', 'admin', 'owner'].map((x) => h('option', { value: x, text: x })));
-    return h('form', { class: 'inline-form', onsubmit: (e) => { e.preventDefault(); setRole(email.value.trim(), role.value).then(() => { email.value = ''; }); } },
-      email, role, h('button', { class: 'btn btn-primary', type: 'submit' }, icon('plus'), 'Add'));
+    const email = h('input', { class: 'input', type: 'email', placeholder: 'name@gmail.com', 'aria-label': 'Gmail address to add' });
+    const role = h('select', { class: 'input', 'aria-label': 'Role' }, ['reviewer', 'admin', 'owner'].map((x) => h('option', { value: x, text: x })));
+    return h('form', { class: 'inline-form', onsubmit: (e) => { e.preventDefault(); setRole(email.value.trim().toLowerCase(), role.value).then((ok) => { if (ok) email.value = ''; }); } },
+      email, role, h('button', { class: 'btn btn-primary', type: 'submit' }, icon('plus'), 'Add to team'));
   }
   async function setRole(email, role) {
-    if (!role && !(await ask({ title: 'Remove from team?', message: `${email} will lose dashboard access.`, confirm: 'Remove', danger: true }))) return;
-    try { await call('setAdmin', { email, role }); toast(role ? `${email} is now ${role}` : `${email} removed`, 'ok'); }
-    catch (e) { toast(e.message, 'error'); }
+    if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) { toast('Enter a valid email address.', 'error'); return false; }
+    if (isRootOwner(email)) { toast('That account is a permanent owner.', 'warn'); return false; }
+    if (!role && !(await ask({ title: 'Remove from team?', message: `${email} will lose dashboard access.`, confirm: 'Remove', danger: true }))) return false;
+    try {
+      const ref = F.doc(fb.db, 'admins', email);
+      if (role) await F.setDoc(ref, { email, role, addedBy: me, addedAt: F.serverTimestamp(), notify: true });
+      else await F.deleteDoc(ref);
+      // with the upload backend connected, also share (or unshare) the private review folders
+      if (backendReady()) call('setAdmin', { email, role }).catch((e) => toast(`Saved, but review-folder sharing failed: ${e.message}`, 'warn', 7000));
+      toast(role ? `${email} is now ${role}` : `${email} removed`, 'ok');
+      return true;
+    } catch (e) { toast(e.code === 'permission-denied' ? 'Only owners can change the team (and not their own role).' : e.message, 'error'); return false; }
   }
 
   add(F.onSnapshot(F.query(F.collection(fb.db, 'users'), F.orderBy('lastSeen', 'desc'), F.limit(100)), (snap) => {

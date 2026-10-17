@@ -3,7 +3,8 @@ rules_version = '2';
 // ACCE Archive security rules.
 // Anything that moves files or changes a submission's status goes through the
 // Apps Script backend (which runs as the project owner and bypasses these rules),
-// so clients only ever write their own profile, reports, and admin-only catalogue data.
+// so clients only ever write their own profile and reports; staff additionally curate
+// the catalogue (items, courses) and owners manage the team.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -11,10 +12,15 @@ service cloud.firestore {
     function verified() { return signedIn() && request.auth.token.email_verified == true; }
     function myEmail() { return request.auth.token.email.lower(); }
     function adminDoc() { return /databases/$(database)/documents/admins/$(myEmail()); }
-    function role() { return get(adminDoc()).data.role; }
-    function isStaff() { return verified() && exists(adminDoc()) && role() in ['reviewer', 'admin', 'owner']; }
-    function isAdmin() { return isStaff() && role() in ['admin', 'owner']; }
-    function isOwner() { return isStaff() && role() == 'owner'; }
+
+    // Permanent owners: always owners, cannot be demoted or removed from the dashboard.
+    // Keep in step with CONFIG.rootOwners (public/js/config.js) and ROOT_OWNERS (apps-script/Code.js).
+    function rootOwners() { return ['muhammadshamsularefin01@gmail.com']; }
+    function isRootOwner() { return verified() && myEmail() in rootOwners(); }
+    function hasRole(roles) { return verified() && exists(adminDoc()) && get(adminDoc()).data.role in roles; }
+    function isStaff() { return isRootOwner() || hasRole(['reviewer', 'admin', 'owner']); }
+    function isAdmin() { return isRootOwner() || hasRole(['admin', 'owner']); }
+    function isOwner() { return isRootOwner() || hasRole(['owner']); }
 
     function str(v, min, max) { return v is string && v.size() >= min && v.size() <= max; }
     function optStr(d, k, max) { return !(k in d) || str(d[k], 0, max); }
@@ -53,7 +59,13 @@ service cloud.firestore {
     match /admins/{email} {
       allow get: if verified() && myEmail() == email;
       allow read: if isStaff();
-      allow write: if false;               // managed by the backend (setAdmin)
+      // owners manage the team; nobody can change their own role or touch a permanent owner
+      allow create, update: if isOwner() && email != myEmail() && !(email in rootOwners())
+        && email.matches('^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$')
+        && request.resource.data.keys().hasOnly(['email', 'role', 'addedBy', 'addedAt', 'notify'])
+        && request.resource.data.email == email
+        && request.resource.data.role in ['reviewer', 'admin', 'owner'];
+      allow delete: if isOwner() && email != myEmail() && !(email in rootOwners());
     }
 
     // ---------- workflow ----------
@@ -80,9 +92,28 @@ service cloud.firestore {
     }
 
     // ---------- public catalogue ----------
+    // The catalogue is the archive's source of truth: one record per work, pointing at
+    // wherever its bytes live (storage.provider = drive | r2 | url).
+    function validItem(d) {
+      return d.keys().hasOnly(['title', 'kind', 'collection', 'type', 'courseCode', 'courseTitle', 'level', 'session',
+                               'examKind', 'examYear', 'instructors', 'authors', 'curriculum', 'curricula', 'language',
+                               'description', 'tags', 'rights', 'credit', 'file', 'storage', 'status', 'contributor',
+                               'submissionId', 'source', 'legacyPath', 'folderId', 'folderPath', 'curated', 'approvedAt',
+                               'updatedAt', 'updatedBy', 'withdrawnReason', 'withdrawnAt'])
+        && d.kind in ['file', 'link']
+        && str(d.title, 1, 300)
+        && d.collection in ['bsc', 'msc', 'qbank', 'misc']
+        && d.status in ['published', 'withdrawn', 'missing']
+        && d.storage is map && d.storage.provider in ['drive', 'r2', 'url']
+        && (!('curricula' in d) || (d.curricula is list && d.curricula.size() <= 8))
+        && (!('tags' in d) || (d.tags is list && d.tags.size() <= 20))
+        && d.updatedAt == request.time;
+    }
+
     match /items/{id} {
       allow read: if true;
-      allow write: if false;               // written on approval / annotation by the backend
+      allow create, update: if isAdmin() && validItem(request.resource.data);
+      allow delete: if isOwner();
     }
 
     match /courses/{code} {
@@ -97,6 +128,10 @@ service cloud.firestore {
     match /config/{doc} {
       allow read: if true;
       allow write: if isOwner();
+      // admins switch catalogue browsing on/off (set by Import / sync)
+      allow write: if doc == 'catalog' && isAdmin()
+        && request.resource.data.keys().hasOnly(['live', 'lastImport', 'updatedAt', 'updatedBy'])
+        && request.resource.data.live is bool;
     }
 
     // ---------- internal ----------

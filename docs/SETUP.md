@@ -73,19 +73,29 @@ The Drive key in `config.js` is public by design. It can only read folders that 
 
 ## 4. Build the team
 
-Sign in on the site and open **Dashboard → People**. Add reviewers and admins by Gmail address:
+**muhammadshamsularefin01@gmail.com is the permanent owner.** That account is an owner as soon as it signs in, needs no setup, and cannot be demoted or removed from the dashboard. To change it, edit `rootOwners` in `firestore.rules`, `public/js/config.js` and `apps-script/Code.js` together.
+
+Sign in as an owner and open **Dashboard → People**. Add people by Gmail address:
 
 | Role | Can |
 |---|---|
-| reviewer | approve or decline submissions, handle reports |
-| admin | everything a reviewer can, plus edit catalogue records, take down files, manage courses, block contributors, run maintenance |
 | owner | everything, plus manage the team and site settings |
+| **admin** | curate the catalogue (edit records, import from Drive, take down), manage courses, block contributors, run maintenance, plus everything a reviewer can |
+| **reviewer** | approve or decline submissions, handle reports |
 
-Adding someone also gives them read access to the private Pending folder, so the review preview works for them.
+This works before the upload backend is connected. Once the backend is connected, adding someone also gives them read access to the private Pending folder, so the review preview works for them.
 
-Then open **Dashboard → Settings → Maintenance → Index checksums** once. This fingerprints everything already in the archive, so duplicate uploads are refused from day one.
+## 5. Build the catalogue
 
-## 5. Check it works
+Open **Dashboard → Catalogue → Import / sync from Drive**. Every file in the public folders gets a catalogue record, with details inferred from its name and folders. The first import switches browsing and search to the catalogue (the virtual library). Then:
+
+- work through **Needs review** (or the "Needs review" badges in the library) and correct the details with **Edit record**;
+- add curricula to records ("Syllabus 2019, Syllabus 2023") so the curriculum filter works;
+- run the import again whenever files are added directly in Drive. It never overwrites your edits.
+
+With the backend connected, also run **Dashboard → Settings → Maintenance → Index checksums** once, so duplicate uploads are refused from day one.
+
+## 6. Check it works
 
 - [ ] Sign in with a second Google account, complete the profile, and submit a small PDF.
 - [ ] The owner receives an email; the file appears under **Dashboard → Review queue**.

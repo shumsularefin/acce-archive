@@ -5,6 +5,7 @@ import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, fmtSize, relTime, plural, fill } from '../lib/dom.js';
 import { getIndex, cachedIndex } from '../services/drive.js';
+import { loadCatalog, catalogStamp, courses, toEntry } from '../services/catalog.js';
 import { fb } from '../services/firebase.js';
 import { openPreview, fileIcon } from './preview.js';
 
@@ -64,26 +65,35 @@ export function render({ root, navigate }) {
     const byRoot = {};
     let bytes = 0;
     for (const f of idx.files) { byRoot[f.root] = (byRoot[f.root] || 0) + 1; bytes += f.size; }
-    root.querySelectorAll('[data-count]').forEach((el) => { el.textContent = plural(byRoot[el.dataset.count] || 0, 'file'); });
-    fill(stats, 
-      stat(idx.files.length.toLocaleString(), 'files'),
-      stat((idx.folders.length - Object.keys(CONFIG.folders).length).toLocaleString(), 'folders'),
+    root.querySelectorAll('[data-count]').forEach((el) => { el.textContent = plural(byRoot[el.dataset.count] || 0, idx.catalog ? 'item' : 'file'); });
+    if (idx.catalog) root.querySelectorAll('.program-box').forEach((a) => { a.href = `#/library/${a.dataset.key}`; });
+    fill(stats,
+      stat(idx.files.length.toLocaleString(), idx.catalog ? 'items' : 'files'),
+      idx.catalog ? stat(idx.courses.toLocaleString(), 'courses') : stat((idx.folders.length - Object.keys(CONFIG.folders).length).toLocaleString(), 'folders'),
       stat(fmtSize(bytes), 'of material'),
-      stat(relTime(idx.t) || 'now', 'last indexed'));
+      stat(relTime(idx.t) || 'now', idx.catalog ? 'last updated' : 'last indexed'));
     const latest = [...idx.files].sort((a, b) => (b.createdTime || '').localeCompare(a.createdTime || '')).slice(0, 7);
     fill(recent, ...(latest.length ? latest.map((f) => h('button', { class: 'recent-row', type: 'button', onclick: () => openPreview(f) },
       fileIcon(f), h('span', { class: 'rr-main' }, h('span', { class: 'rr-name', text: f.name }), h('span', { class: 'rr-path', text: f.path.join(' / ') })),
       h('span', { class: 'rr-when', text: relTime(f.createdTime) }))) : [h('p', { class: 'muted', text: 'Nothing indexed yet.' })]));
   };
 
-  const cached = cachedIndex();
-  if (cached) paint(cached);
-  else {
+  const fromDrive = () => {
+    const cached = cachedIndex();
+    if (cached) return paint(cached);
     fill(stats, h('div', { class: 'stat stat-loading' }, h('span', { class: 'spinner' }), h('span', { text: 'Indexing the archive…' })));
     getIndex({ onProgress: (p) => { if (alive) fill(stats.querySelector('.stat-loading span:last-child'), `Indexing the archive… ${p.files.toLocaleString()} files`); } })
       .then(paint)
       .catch(() => { if (alive) { fill(stats); fill(recent, h('p', { class: 'muted', text: 'Could not load recent additions.' })); } });
-  }
+  };
+
+  // The catalogue is the source of truth once it exists; until then, crawl the Drive folders.
+  Promise.all([loadCatalog(), courses()]).then(([items, cmap]) => {
+    if (!alive) return;
+    if (!items.length) return fromDrive();
+    const files = items.map((i) => toEntry(i, cmap));
+    paint({ catalog: true, files, t: catalogStamp(), courses: new Set(items.map((i) => i.courseCode).filter(Boolean)).size });
+  }).catch(fromDrive);
   return () => { alive = false; };
 }
 

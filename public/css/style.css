@@ -774,3 +774,23 @@ button.mini-row:hover{background:var(--glass-2)}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none !important; transition:none !important}
 }
+.role-key{list-style:none; margin:0 0 14px; padding:0; display:grid; gap:6px}
+.role-key li{display:flex; gap:10px; align-items:baseline}
+.role-key .pill{min-width:72px; justify-content:center}
+
+/* ---------- library (virtual browsing) ---------- */
+.library .browser-bar{position:static}
+.lib-groups{display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; margin-bottom:26px}
+.lib-group{display:flex; align-items:center; gap:12px; padding:14px 14px 14px 12px; border-radius:12px; text-decoration:none; color:var(--text);
+  background:var(--glass); border:1px solid var(--edge); animation:fadeUp .3s var(--ease) both; animation-delay:calc(var(--i,0) * 14ms);
+  transition:transform .18s var(--ease), border-color .18s, background .18s}
+.lib-group:hover{transform:translateY(-2px); border-color:rgba(63,208,122,.45); background:var(--glass-2)}
+.lib-group > .ic:last-child{opacity:.4; transition:transform .2s var(--ease)}
+.lib-group:hover > .ic:last-child{transform:translateX(3px); opacity:.8}
+.lib-group.is-none{border-style:dashed}
+.lg-ic{display:grid; place-items:center; width:38px; height:38px; flex:none; border-radius:10px; color:var(--reagent); background:rgba(72,214,200,.1); border:1px solid rgba(72,214,200,.22)}
+.lg-main{display:flex; flex-direction:column; min-width:0; flex:1}
+.lg-name{font-weight:600; font-size:.92rem; overflow-wrap:anywhere}
+.lg-count{font-size:.76rem; color:var(--muted)}
+.library .result-meta{flex-direction:row; flex-wrap:wrap; justify-content:flex-end; max-width:40%}
+.stack > p{margin:0}
