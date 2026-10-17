@@ -93,16 +93,20 @@ function touchVisit(uid) {
 }
 
 /* ---------- auth ---------- */
+/** Google sign-in: popup, falling back to a full-page redirect. Resolves true, false (closed) or 'redirect'. */
 export async function signIn() {
   const provider = new A.GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
   try {
     await A.signInWithPopup(fb.auth, provider);
+    fb.error = null;
+    return true;
   } catch (e) {
     if (['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment'].includes(e.code)) {
-      return A.signInWithRedirect(fb.auth, provider);
+      await A.signInWithRedirect(fb.auth, provider);
+      return 'redirect';
     }
-    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return;
+    if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') return false;
     const err = new Error(friendlyAuthError(e));
     err.code = e.code;
     throw err;
@@ -150,10 +154,22 @@ export const isOwner = () => fb.role === 'owner';
 export const isRootOwner = (email) => CONFIG.rootOwners.includes(String(email || '').toLowerCase());
 
 /* ---------- small Firestore conveniences ---------- */
+/** Readable text for a Firestore error; permission-denied on a staff tool usually means the server rules are older than the site. */
+export function fsMessage(e) {
+  if (e?.code === 'permission-denied') return 'Not allowed by the Firestore rules on the server. If you are staff, the rules there may be older than this site: deploy firestore.rules (npm run deploy:rules).';
+  return e?.message || String(e);
+}
+
 export function docs(snap) { return snap.docs.map((d) => ({ id: d.id, ...d.data() })); }
 
-export async function getSettings() {
-  try { const s = await F.getDoc(F.doc(fb.db, 'config', 'settings')); return s.exists() ? s.data() : {}; } catch { return {}; }
+/** config/settings, read once per page load (fresh: true re-reads). */
+let settingsPromise;
+export function getSettings({ fresh = false } = {}) {
+  if (!fb.ready) return Promise.resolve({});
+  if (fresh || !settingsPromise) {
+    settingsPromise = F.getDoc(F.doc(fb.db, 'config', 'settings')).then((s) => (s.exists() ? s.data() : {}), () => ({}));
+  }
+  return settingsPromise;
 }
 
 export async function linkItemsIn(folderId) {

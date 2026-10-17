@@ -1,22 +1,28 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#06231b">
+<meta name="theme-color" content="#f3f6fb" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#050a16" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Departmental archive of books, lecture material, question banks and research - Department of Applied Chemistry and Chemical Engineering, GSTU.">
 <meta property="og:title" content="ACCE Archive · GSTU">
 <meta property="og:description" content="Books, lecture material, question banks and research for Applied Chemistry & Chemical Engineering, GSTU.">
-<meta property="og:image" content="assets/acce-logo.png">
+<meta property="og:image" content="/icon-512.png">
 <title>ACCE Archive · GSTU</title>
 
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://www.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="dns-prefetch" href="https://firestore.googleapis.com">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚗️</text></svg>">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,400..800;1,400..800&display=swap">
 <link rel="stylesheet" href="css/style.css">
-<script>try{var t=localStorage.getItem('acce.theme');if(t){try{t=JSON.parse(t)}catch(e){}if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}}catch(e){}</script>
+<script>try{var t=localStorage.getItem('acce.theme');try{t=JSON.parse(t)}catch(e){}if(t!=='light'&&t!=='dark')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}catch(e){}</script>
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
@@ -77,22 +83,21 @@
   <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 3v5.4L4.9 17c-.8 1.4.2 3.1 1.8 3.1h10.6c1.6 0 2.6-1.7 1.8-3.1L14 8.4V3"/><path d="M8.6 3h6.8"/><path d="M7.2 14.2h9.6"/></symbol>
 </svg>
 
-<!-- background: hex lattice + bubbles -->
+<!-- background: soft colour fields + a faint benzene lattice -->
 <div class="bg" aria-hidden="true">
+  <div class="aurora"><i></i><i></i><i></i><i></i></div>
   <svg class="bg-lattice" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <pattern id="hex" width="56" height="97" patternUnits="userSpaceOnUse" patternTransform="scale(1.1)">
-        <path d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z M28 64 L56 80 L56 112 M28 64 L0 80 L0 112"
-              fill="none" stroke="currentColor" stroke-width="1"/>
+      <pattern id="hex" width="56" height="97" patternUnits="userSpaceOnUse">
+        <path d="M28 0 L56 16 L56 48 L28 64 L0 48 L0 16 Z M28 64 L56 80 L56 112 M28 64 L0 80 L0 112" fill="none" stroke="currentColor" stroke-width="1"/>
       </pattern>
     </defs>
     <rect width="100%" height="100%" fill="url(#hex)"/>
   </svg>
-  <div class="bubbles"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 </div>
 
 <div id="boot" class="boot" aria-live="polite">
-  <div class="boot-mark"><img src="assets/acce-logo.png" alt="" width="72" height="72"></div>
+  <span class="crest"><img src="assets/acce-crest-192.png" alt="" width="80" height="80"></span>
   <p>Opening the archive…</p>
 </div>
 
@@ -100,27 +105,26 @@
 
 <div id="app" class="app" hidden>
   <a class="skip" href="#view">Skip to content</a>
-  <header class="site-head glass">
+  <header class="site-head">
     <a class="brand" href="#/" aria-label="ACCE Archive home">
-      <img src="assets/gstu-logo.png" alt="" class="crest" onerror="this.remove()">
-      <div class="brand-text">
-        <strong>ACCE Archive</strong>
+      <span class="crest"><img src="assets/acce-crest-192.png" alt="" width="40" height="40"></span>
+      <span class="brand-text">
+        <strong>ACCE <em>Archive</em></strong>
         <span>Applied Chemistry &amp; Chemical Engineering · GSTU</span>
-      </div>
+      </span>
     </a>
-
-    <button id="search-trigger" class="search-trigger" type="button" aria-label="Search the archive">
-      <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
-      <span>Search the archive</span>
-      <kbd>/</kbd>
-    </button>
 
     <nav class="main-nav" id="main-nav" aria-label="Main"></nav>
 
     <div class="head-tools">
-      <button id="theme-btn" class="icon-btn" type="button" aria-label="Switch theme">
-        <svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>
+      <button id="search-trigger" class="search-trigger" type="button" aria-label="Search the archive">
+        <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+        <span>Search…</span>
+        <kbd>/</kbd>
       </button>
+      <span class="theme-btn-wrap"><button id="theme-btn" class="icon-btn" type="button" aria-label="Switch theme">
+        <svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button></span>
       <div class="account" id="account"></div>
     </div>
   </header>
@@ -130,18 +134,40 @@
   <main id="view" tabindex="-1"></main>
 
   <footer class="site-foot">
-    <div class="foot-cols">
-      <div>
-        <strong>ACCE Archive</strong>
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <a class="brand" href="#/">
+          <span class="crest"><img src="assets/acce-crest-192.png" alt="" width="40" height="40" loading="lazy"></span>
+          <span class="brand-text"><strong>ACCE <em>Archive</em></strong><span>Since 2012</span></span>
+        </a>
         <p>Department of Applied Chemistry and Chemical Engineering, Gopalganj Science and Technology University.</p>
+        <span class="foot-marks"><img src="assets/gstu-logo.png" alt="GSTU" width="30" height="30" loading="lazy" onerror="this.remove()">Gopalganj Science and Technology University</span>
       </div>
-      <nav aria-label="Footer">
+      <nav class="foot-col" aria-label="Archive">
+        <h3>Archive</h3>
+        <a href="#/">Home</a>
+        <a href="#/browse/bsc">Browse collections</a>
+        <a href="#/search">Search</a>
         <a href="#/about">About &amp; policies</a>
+      </nav>
+      <nav class="foot-col" aria-label="Contribute">
+        <h3>Contribute</h3>
+        <a href="#/submit">Upload material</a>
+        <a href="#/my">My uploads</a>
+        <a href="#/about#scope">What to upload</a>
         <a href="#/about#takedown">Report or take-down</a>
-        <a href="#/submit">Contribute material</a>
+      </nav>
+      <nav class="foot-col" aria-label="Account">
+        <h3>Account</h3>
+        <a href="#/signin">Sign in with Google</a>
+        <a href="#/signin?next=/admin">Staff &amp; editor sign-in</a>
+        <a href="#/admin">Dashboard</a>
       </nav>
     </div>
-    <p class="foot-legal">© 2026 Shumsul Arefin · Materials remain the property of their authors and are shared for educational use.</p>
+    <div class="foot-legal">
+      <span>© 2026 Shumsul Arefin · Materials remain the property of their authors and are shared for educational use.</span>
+      <span>Files are served by Google Drive.</span>
+    </div>
   </footer>
 
   <nav class="tabbar" id="tabbar" aria-label="Quick navigation"></nav>

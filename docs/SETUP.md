@@ -51,13 +51,9 @@ The backend is a small Apps Script web app that runs **as you**. Uploads therefo
    - *Who has access*: **Anyone**
 
    Copy the URL that ends in `/exec`.
-6. Paste the URL into `public/js/config.js`:
+6. On the site, sign in as an owner and open **Dashboard → Settings → Upload service**. Paste the URL, click **Test**, then **Save**. Uploads are switched on for everyone at once; no code change or redeploy is needed.
 
-   ```js
-   backendUrl: 'https://script.google.com/macros/s/AKfy…/exec',
-   ```
-
-   Commit and push to `main`. The site redeploys automatically.
+   *(Alternatively, put it in `public/js/config.js` as `backendUrl: '…/exec'` and push. A URL set in `config.js` takes precedence over the dashboard.)*
 
 > **Updating the backend later:** paste the new code, then use *Deploy → Manage deployments → Edit → Version: New version*. Editing the existing deployment keeps the same URL.
 
@@ -109,7 +105,9 @@ With the backend connected, also run **Dashboard → Settings → Maintenance �
 |---|---|
 | "This web address is not authorised for sign-in" | Add the domain under Authentication → Settings → Authorised domains. |
 | Site stays browse-only and the console says *Firebase web app is not registered* | Do step 1.1. |
-| "Submissions open soon" | `backendUrl` is empty or malformed in `config.js`. |
+| "Uploads open soon" / "Uploads not connected" | The upload service URL is not set. Paste the web app URL in **Dashboard → Settings → Upload service** (step 2.6). If **Test** fails, check the deployment's access is *Anyone*. |
+| "Search is unavailable: access denied" | Fixed in the site: Drive refuses multi-folder queries made with an API key, so the crawler now lists one folder per request. If it reappears, check the folders are still shared *Anyone with the link* and the key's website restrictions include the site's domain. |
+| Catalogue import says *the Firestore rules on the server are older than this site* | Deploy the rules (`npm run deploy:rules`), then run the import again. Until then, browsing keeps using the Drive folders. |
 | Backend says *not configured (FIREBASE_API_KEY)* | Add the script property, then redeploy a new version. |
 | `checkSetup` says *Firestore not reachable: … has not been used in project* | Enable the **Cloud Firestore API** for project `accearchive` in Google Cloud console. The script account must also be an owner/editor of the Firebase project; otherwise grant it *Cloud Datastore User* + *Service Usage Consumer*. |
 | Reviewers see a blank preview | They must be added through the dashboard (which shares the Pending folder with them) and be signed in to Google in the same browser. |

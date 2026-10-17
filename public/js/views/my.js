@@ -22,8 +22,8 @@ export function render({ root }) {
   const tally = h('div', { class: 'chip-row' });
   root.append(h('section', { class: 'page' },
     h('div', { class: 'page-head row-between' },
-      h('div', {}, h('span', { class: 'eyebrow', text: 'Your contributions' }), h('h1', { text: 'My uploads' })),
-      h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Contribute')),
+      h('div', {}, h('span', { class: 'eyebrow', text: 'Your uploads' }), h('h1', { text: 'My uploads' })),
+      h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Upload')),
     tally, list));
 
   const q = F.query(F.collection(fb.db, 'submissions'), F.where('uid', '==', fb.user.uid), F.orderBy('createdAt', 'desc'), F.limit(100));
@@ -33,7 +33,7 @@ export function render({ root }) {
     fill(tally, ...Object.entries(counts).map(([s, n]) => h('span', { class: 'chip static' }, STATUS[s]?.label || s, h('b', { text: n }))));
     if (!items.length) {
       fill(list, emptyState('inbox', 'Nothing submitted yet', 'Your first contribution could save the next batch hours of searching.',
-        h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Contribute material')));
+        h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Upload material')));
       return;
     }
     fill(list, ...items.map(card));

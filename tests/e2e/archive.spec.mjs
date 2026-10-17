@@ -42,14 +42,14 @@ function driveApi(route) {
   return route.fulfill({ json: { files } });
 }
 
-async function wire(page) {
+async function wire(page, { backendInCode = true } = {}) {
   page.on('pageerror', (e) => { throw e; });
   await page.route('https://www.gstatic.com/firebasejs/**', (r) => r.fulfill({
     contentType: 'text/javascript', body: fs.readFileSync(path.resolve('node_modules/firebase', path.basename(new URL(r.request().url()).pathname)))
   }));
   await page.route('**/js/config.js', async (r) => {
     const src = fs.readFileSync('public/js/config.js', 'utf8')
-      .replace("backendUrl: ''", `backendUrl: '${BACKEND}'`)
+      .replace("backendUrl: ''", backendInCode ? `backendUrl: '${BACKEND}'` : "backendUrl: ''")
       .replace('emulators: null', `emulators: { auth: '${AUTH}', firestore: { host: '${new URL(FS).hostname}', port: ${new URL(FS).port} } }`);
     await r.fulfill({ contentType: 'text/javascript', body: src });
   });
@@ -93,17 +93,17 @@ test('student enters with name, session and ID (no Google), browses, searches an
 
   // the original validation rules
   await page.getByRole('button', { name: 'Enter the archive' }).click();
-  await expect(page.locator('.gate-card form .form-error')).toContainText('too short');
+  await expect(page.locator('.gate-form form .form-error')).toContainText('too short');
   await page.locator('#f-name').fill('Alice Rahman');
   await page.getByRole('button', { name: 'Enter the archive' }).click();
-  await expect(page.locator('.gate-card form .form-error')).toContainText('No session selected');
+  await expect(page.locator('.gate-form form .form-error')).toContainText('No session selected');
   await page.locator('#f-session').selectOption('2020');
   await page.locator('#f-id').fill('21ace004');
   await page.getByRole('button', { name: 'Enter the archive' }).click();
-  await expect(page.locator('.gate-card form .form-error')).toContainText('does not belong to the selected session');
+  await expect(page.locator('.gate-form form .form-error')).toContainText('does not belong to the selected session');
   await page.locator('#f-id').fill('20ACE000');
   await page.getByRole('button', { name: 'Enter the archive' }).click();
-  await expect(page.locator('.gate-card form .form-error')).toContainText('serial number');
+  await expect(page.locator('.gate-form form .form-error')).toContainText('serial number');
   await page.locator('#f-id').fill('20ace004');
   await page.getByRole('button', { name: 'Enter the archive' }).click();
   await expect(page.locator('.eyebrow', { hasText: 'Welcome back, Alice' })).toBeVisible();
@@ -113,6 +113,9 @@ test('student enters with name, session and ID (no Google), browses, searches an
   await page.reload();
   await expect(page.locator('.hero-title')).toBeVisible();
   await expect(page.locator('#f-id')).toHaveCount(0);
+  // signing in stays one click away for students who later want to upload
+  await expect(page.locator('.head-signin')).toBeVisible();
+  await expect(page.locator('.site-head .crest img')).toBeVisible();
 
   await expect(page.locator('.hero-title')).toBeVisible();
   await expect(page.locator('.stats')).toContainText('files');
@@ -168,7 +171,8 @@ test('student contributes a file; duplicate is refused', async ({ page }) => {
   await wire(page);
   await page.goto('/#/submit');
   await enterAsStudent(page);
-  await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible();   // contributing needs Google
+  await expect(page.getByRole('heading', { name: 'Sign in to upload' })).toBeVisible();   // uploading needs Google
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
   // signing in with Google fills the profile from the student details: no second form
   await signIn(page, { sub: 'alice', email: 'alice@gmail.com', email_verified: true, name: 'Alice R.' });
   await expect(page.getByRole('heading', { name: 'Add to the archive' })).toBeVisible();
@@ -182,13 +186,14 @@ test('student contributes a file; duplicate is refused', async ({ page }) => {
   await expect(page.locator('.q-item input')).toHaveValue('mass transfer notes');
 
   await page.getByRole('button', { name: 'Submit for review' }).click();
-  await expect(page.locator('.form-error')).toContainText('Choose a collection');
+  await expect(page.locator('.form-error')).toContainText('Choose the material type');
   const form = page.locator('.metaform');
-  await form.locator('select').nth(0).selectOption('bsc');
+  await expect(form.locator('select').nth(0)).toHaveValue('bsc');          // most uploads are coursework
   await form.locator('select').nth(1).selectOption('lecture');
   await form.locator('input[list$="-courses"]').fill('acce 1101');
   await form.locator('input[list$="-courses"]').blur();
   await expect(form.locator('input[placeholder="Course title"]')).toHaveValue('Chemical Engineering Thermodynamics');
+  await page.getByText(/More details/).click();
   await page.getByText('My own work').click();
   await page.locator('#s-declare').check();
   await shot(page, '06-submit');
@@ -208,9 +213,7 @@ test('student contributes a file; duplicate is refused', async ({ page }) => {
   await page.goto('/#/submit');
   await page.locator('input[type=file]').setInputFiles({ name: 'copy.pdf', mimeType: 'application/pdf', buffer: pdf });
   const form2 = page.locator('.metaform');
-  await form2.locator('select').nth(0).selectOption('bsc');
   await form2.locator('select').nth(1).selectOption('lecture');
-  await page.getByText('My own work').click();
   await page.locator('#s-declare').check();
   await page.getByRole('button', { name: 'Submit for review' }).click();
   await expect(page.locator('.q-item.st-error')).toContainText('already waiting for review');
@@ -219,9 +222,9 @@ test('student contributes a file; duplicate is refused', async ({ page }) => {
 test('owner reviews and publishes; contributor sees it published', async ({ page }) => {
   await wire(page);
   await page.goto('/');
+  await expect(page.locator('.gate-alt')).toContainText('Faculty, editors');
   await signIn(page, { sub: 'owner', email: 'owner@gmail.com', email_verified: true, name: 'Archive Owner' });
-  await page.locator('[data-k="faculty"]').click();
-  await page.getByRole('button', { name: 'Enter the archive' }).click();
+  // staff go straight in (no profile form) and find the dashboard in the top bar
   await expect(page.getByRole('link', { name: /Dashboard/ }).first()).toBeVisible();
 
   await page.goto('/#/admin');
@@ -269,15 +272,18 @@ test('contributor sees the decision; layout holds on a phone', async ({ page }) 
   expect(overflow).toBeLessThanOrEqual(0);
   await shot(page, '11-mobile-home');
   await page.goto('/#/admin');
-  await expect(page.getByRole('heading', { name: 'Staff only' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No dashboard access yet' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use another account' })).toBeVisible();
 });
 
 test('permanent owner builds the team, imports the catalogue and browses it virtually', async ({ page }) => {
   await wire(page);
-  await page.goto('/');
+  // the footer's "Staff & editor sign-in" link: signing in lands on the dashboard
+  await page.goto('/#/signin?next=/admin');
+  await expect(page.locator('.gate-alt')).toContainText('open the dashboard');
   await signIn(page, { sub: 'root', email: 'muhammadshamsularefin01@gmail.com', email_verified: true, name: 'Muhammad Shamsul Arefin' });
-  await page.locator('[data-k="faculty"]').click();
-  await page.getByRole('button', { name: 'Enter the archive' }).click();
+  await expect(page).toHaveURL(/#\/admin$/);
+  await expect(page.locator('.admin-tabs')).toBeVisible();
   await expect(page.getByRole('link', { name: /Dashboard/ }).first()).toBeVisible();
 
   // team: permanent owner pinned, owners add admins/reviewers without the upload backend
@@ -364,5 +370,41 @@ test('without Firebase students still get in and browse (graceful fallback)', as
   await page.locator('.program-box[data-key="qbank"]').click();
   await expect(page.locator('.dir-table')).toContainText('2023');
   await page.goto('/#/submit');
-  await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Sign in to upload' })).toBeVisible();
+  await page.getByRole('button', { name: 'Continue with Google' }).click();
+  await expect(page.locator('.guard .form-error')).toContainText('unavailable');   // explained, not silent
+});
+
+test('owner switches uploads on from the dashboard (no code edit); new contributors give their details inline', async ({ page }) => {
+  await wire(page, { backendInCode: false });
+  h.ctx.fsSet_('config/settings', { ...(h.ctx.fsGet_('config/settings') || {}), backendUrl: '' });
+  await page.goto('/#/signin?next=/admin/settings');
+  await signIn(page, { sub: 'owner', email: 'owner@gmail.com', email_verified: true, name: 'Archive Owner' });
+  await expect(page).toHaveURL(/#\/admin\/settings$/);
+  await expect(page.locator('.page-head .pill-warn')).toContainText('Uploads not connected');
+  const card = page.locator('.card', { hasText: 'Upload service' });
+  await expect(card.locator('.pill')).toContainText('Not connected');
+  await card.locator('input[type=url]').fill('https://example.com/not-a-script');
+  await card.getByRole('button', { name: 'Test' }).click();
+  await expect(card.locator('.form-error')).toContainText('not a web app URL');
+  await card.locator('input[type=url]').fill(BACKEND);
+  await card.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('.toast-ok', { hasText: 'Upload service connected' })).toBeVisible();
+  await expect(card.locator('.pill')).toContainText('Connected');
+  await expect.poll(() => h.ctx.fsGet_('config/settings').backendUrl).toBe(BACKEND);
+  await shot(page, '17-upload-service');
+
+  // a fresh page picks the URL up from Firestore; the owner has no profile yet, so it is asked here once
+  await page.goto('/#/submit');
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Tell us who you are' })).toBeVisible();
+  await page.locator('#p-name').fill('Archive Owner');
+  await page.locator('[data-k="faculty"]').click();
+  await page.getByRole('button', { name: 'Continue to upload' }).click();
+  await expect(page.getByRole('heading', { name: 'Add to the archive' })).toBeVisible();
+  // course and type are guessed from the file name
+  await page.locator('input[type=file]').setInputFiles({ name: 'ACCE-1101 lecture slides week 3.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(2048, 3) });
+  await expect(page.locator('.metaform input[list$="-courses"]')).toHaveValue('ACCE-1101');
+  await expect(page.locator('.metaform select').nth(1)).toHaveValue('lecture');
+  await expect(page.locator('.metaform input[placeholder="Course title"]')).toHaveValue('Chemical Engineering Thermodynamics');
 });

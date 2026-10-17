@@ -5,18 +5,32 @@
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, fmtSize, toast, emptyState, fill } from '../lib/dom.js';
-import { fb } from '../services/firebase.js';
+import { fb, isOwner } from '../services/firebase.js';
 import { backendReady, backendConfig, uploadFile, submitLink, extOf, acceptAttr } from '../services/backend.js';
+import { inferCourse, inferType } from '../lib/infer.js';
 import { buildMetaForm } from './metaform.js';
+import { profileForm } from './gate.js';
 
 const MAX_BATCH = 10;
 const titleFromName = (n) => n.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-export async function render({ root, query }) {
+export async function render({ root, query, navigate }) {
   if (!backendReady()) {
-    root.append(h('section', { class: 'page narrow' }, emptyState('clock', 'Submissions open soon',
-      'The upload service has not been switched on for this site yet. You can still browse and search everything.',
-      h('a', { class: 'btn btn-ghost', href: '#/', text: 'Back to the archive' }))));
+    root.append(h('section', { class: 'page narrow' }, h('div', { class: 'card glass' }, isOwner()
+      ? emptyState('upload', 'Connect the upload service',
+        'Uploads go through your Apps Script web app. Paste its URL in Dashboard \u2192 Settings and students can start uploading straight away.',
+        h('a', { class: 'btn btn-primary', href: '#/admin/settings' }, icon('settings'), 'Open settings'))
+      : emptyState('clock', 'Uploads open soon',
+        'The archive team is still switching uploads on. You can browse, preview and download everything in the meantime.',
+        h('a', { class: 'btn', href: '#/', text: 'Back to the archive' })))));
+    return;
+  }
+  if (!fb.profile) {
+    // asked once, here rather than at sign-in, so browsing never waits on it
+    root.append(h('section', { class: 'page narrow' },
+      h('div', { class: 'page-head' }, h('span', { class: 'eyebrow', text: 'Upload \u00b7 one-time step' }), h('h1', { text: 'Tell us who you are' }),
+        h('p', { class: 'muted', text: 'Reviewers use this to credit your uploads. You only do this once.' })),
+      h('div', { class: 'card glass' }, profileForm({ submitLabel: 'Continue to upload', onSaved: () => navigate('#/submit') }))));
     return;
   }
   const cfg = await backendConfig();
@@ -61,7 +75,9 @@ export async function render({ root, query }) {
   }
 
   /* ---------- step 2: describe ---------- */
-  const meta = await buildMetaForm({ hideTitle: true, initial: { collection: CONFIG.folders[query.get('c')] ? query.get('c') : '', rights: '' } });
+  const meta = await buildMetaForm({ hideTitle: true, simple: true, initial: {
+    collection: CONFIG.folders[query.get('c')] ? query.get('c') : 'bsc', rights: 'educational'
+  } });
 
   /* ---------- step 3: confirm ---------- */
   const declare = h('input', { type: 'checkbox', id: 's-declare' });
@@ -70,17 +86,17 @@ export async function render({ root, query }) {
   const cancel = h('button', { class: 'btn btn-ghost', type: 'button', hidden: true, text: 'Cancel', onclick: () => controller?.abort() });
 
   const form = h('form', { class: 'submit-form', novalidate: true },
-    step(1, 'What are you sharing?', seg, filePane, linkPane),
-    step(2, 'Describe it', h('p', { class: 'muted small', text: 'Good details make material findable for years. Applies to every file in this batch.' }), meta.el),
-    step(3, 'Confirm',
+    step(1, 'Choose files', seg, filePane, linkPane),
+    step(2, 'Where does it belong?', h('p', { class: 'muted small', text: 'We fill in what we can from the file name. Applies to every file in this batch.' }), meta.el),
+    step(3, 'Send for review',
       h('label', { class: 'check' }, declare, h('span', { text: 'I have the right to share this, it is relevant to the department, and it contains no one’s private information (phone numbers, marks, ID cards).' })),
       err, h('div', { class: 'row-end' }, cancel, send)));
 
   const success = h('div', { class: 'card glass success-card', hidden: true });
 
   root.append(h('section', { class: 'page submit-page' },
-    h('div', { class: 'page-head' }, h('span', { class: 'eyebrow', text: 'Contribute' }), h('h1', { text: 'Add to the archive' }),
-      h('p', { class: 'muted', text: `Signed in as ${fb.profile?.displayName || fb.user.email}. Everything is reviewed before it appears publicly, and you can follow its progress in My uploads.` })),
+    h('div', { class: 'page-head' }, h('span', { class: 'eyebrow', text: 'Upload' }), h('h1', { text: 'Add to the archive' }),
+      h('p', { class: 'muted', text: `Signed in as ${fb.profile?.displayName || fb.user.email} (${fb.user.email}). Everything is reviewed before it appears publicly; follow its progress in My uploads.` })),
     h('div', { class: 'submit-layout' }, h('div', {}, form, success), guide(maxMB))));
 
   function step(n, title, ...content) {
@@ -99,8 +115,18 @@ export async function render({ root, query }) {
       if (problem) { toast(`${file.name}: ${problem}`, 'error', 6000); continue; }
       if (queue.some((q) => q.file.name === file.name && q.file.size === file.size)) continue;
       queue.push({ file, title: titleFromName(file.name), status: 'ready', progress: 0, error: '' });
+      prefill(file);
     }
     drawQueue();
+  }
+
+  /** Guess the course and material type from a file name, without overwriting anything typed. */
+  function prefill(file) {
+    const fl = meta.fields;
+    const code = inferCourse(file.name);
+    if (code && !fl.courseCode.value) { fl.courseCode.value = code; fl.courseCode.dispatchEvent(new Event('change')); }
+    const type = inferType({ name: file.name, mimeType: file.type }, [], fl.collection.value);
+    if (type !== 'other' && !fl.type.value) { fl.type.value = type; fl.type.dispatchEvent(new Event('change')); }
   }
 
   function drawQueue() {

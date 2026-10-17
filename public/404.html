@@ -4,21 +4,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Page not found · ACCE Archive</title>
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
 <style>
-  :root{color-scheme:dark light}
-  body{margin:0; min-height:100dvh; display:grid; place-items:center; padding:20px; font-family:"Segoe UI",system-ui,sans-serif; color:#e8f3ec;
-    background:radial-gradient(900px 600px at 10% -10%,#0a2a1e,transparent 60%),linear-gradient(170deg,#04150f,#02100c)}
-  .card{max-width:420px; text-align:center; padding:36px 28px; border-radius:20px; background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.13)}
-  img{width:72px; height:72px; object-fit:contain}
-  h1{margin:14px 0 6px; font-size:1.5rem; letter-spacing:-.02em}
-  p{margin:0 0 22px; color:#96b3a6; line-height:1.55}
-  a{display:inline-block; padding:11px 20px; border-radius:10px; font-weight:600; color:#04150f; text-decoration:none; background:linear-gradient(180deg,#3fd07a,#22a85e)}
-  @media (prefers-color-scheme:light){body{color:#0d2a1e; background:linear-gradient(170deg,#eaf3ee,#f5faf7)} .card{background:rgba(255,255,255,.7); border-color:rgba(11,60,40,.14)} p{color:#4d6d5f}}
+  :root{color-scheme:light dark}
+  body{margin:0; min-height:100dvh; display:grid; place-items:center; padding:20px; font-family:Tenorite,Figtree,"Segoe UI",system-ui,sans-serif; color:#0a1630;
+    background:radial-gradient(900px 600px at 0% -10%,#d3e0ff,transparent 60%),radial-gradient(700px 500px at 100% 0%,#cdf3f8,transparent 60%),#f3f6fb}
+  .card{max-width:440px; text-align:center; padding:40px 30px; border-radius:24px; background:#fff; border:1px solid rgba(12,32,72,.09); box-shadow:0 40px 90px -24px rgba(10,22,48,.3)}
+  .crest{display:inline-grid; place-items:center; width:96px; height:96px; border-radius:50%; background:#fff; box-shadow:0 0 0 1px rgba(1,37,62,.12),0 10px 24px -8px rgba(1,37,62,.4)}
+  .crest img{width:88%; height:88%; object-fit:contain}
+  h1{margin:18px 0 8px; font-size:1.55rem; letter-spacing:-.02em}
+  p{margin:0 0 24px; color:#5c6885; line-height:1.6}
+  a{display:inline-block; padding:12px 22px; border-radius:12px; font-weight:600; color:#fff; text-decoration:none; background:linear-gradient(180deg,#3a6df0,#1f57e7)}
+  @media (prefers-color-scheme:dark){body{color:#e9eef8; background:radial-gradient(900px 600px at 0% -10%,#14296b,transparent 60%),#050a16} .card{background:#0c1427; border-color:rgba(255,255,255,.08)} p{color:#8f9cb7}}
 </style>
 </head>
 <body>
   <div class="card">
-    <img src="/assets/acce-logo.png" alt="">
+    <span class="crest"><img src="/assets/acce-crest-192.png" alt=""></span>
     <h1>This page is not in the archive</h1>
     <p>The address may be mistyped, or the page has moved. Everything in the archive is reachable from the home page.</p>
     <a href="/">Go to the ACCE Archive</a>

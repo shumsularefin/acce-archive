@@ -95,7 +95,7 @@ export async function render({ root, params, query, navigate }) {
     if (!list.length) {
       fill(body, q ? emptyState('search', 'Nothing here matches that', 'Try a shorter word, or search the whole archive.',
         h('a', { class: 'btn btn-ghost', href: `#/search?q=${encodeURIComponent(q)}` }, icon('search'), 'Search everywhere'))
-        : emptyState('folder', 'This folder is empty', 'Have something that belongs here?', h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Contribute')));
+        : emptyState('folder', 'This folder is empty', 'Have something that belongs here?', h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Upload')));
       count.textContent = '';
       return;
     }

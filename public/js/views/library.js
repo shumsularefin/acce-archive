@@ -96,7 +96,7 @@ export async function render({ root, params, query }) {
       .sort((a, b) => (b.examYear || 0) - (a.examYear || 0) || a.title.localeCompare(b.title));
     const atLeaf = segs.length >= dims.length;
     fill(listHead, h('h2', { class: 'h-sub', text: atLeaf ? 'Items' : `Everything in ${title}` }), h('span', { class: 'muted small', text: plural(list.length, 'item') }));
-    if (!list.length) { fill(listBox, emptyState('search', q ? 'Nothing matches that filter' : 'Nothing here yet', q ? '' : 'Have something that belongs here?', q ? null : h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Contribute'))); return; }
+    if (!list.length) { fill(listBox, emptyState('search', q ? 'Nothing matches that filter' : 'Nothing here yet', q ? '' : 'Have something that belongs here?', q ? null : h('a', { class: 'btn btn-primary', href: '#/submit' }, icon('upload'), 'Upload'))); return; }
     fill(listBox, ...list.slice(0, shown).map((it, i) => row(it, i)),
       list.length > shown ? h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: () => { shown += PAGE; paintList(); } }, `Show more (${list.length - shown} left)`) : null);
   }
