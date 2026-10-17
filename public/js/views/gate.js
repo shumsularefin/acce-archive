@@ -1,10 +1,12 @@
 /* ============================================================
-   Sign-in screen and first-time profile.
+   Entry screen (student details by default, Google for contributors
+   and staff) and the first-time profile for Google accounts.
    ============================================================ */
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, toast, fill } from '../lib/dom.js';
-import { fb, signIn, signOut, saveProfile, guest, SETUP_ERRORS } from '../services/firebase.js';
+import { fb, signIn, signOut, saveProfile, initFirebase } from '../services/firebase.js';
+import { student, validateStudent, logVisit } from '../services/student.js';
 
 const GOOGLE_G = '<svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>';
 
@@ -12,41 +14,65 @@ export async function startSignIn(errorEl) {
   try {
     await signIn();
   } catch (e) {
-    if (errorEl) { errorEl.textContent = e.message; errorEl.hidden = false; offerGuest(errorEl, e.code); }
+    if (errorEl) { errorEl.textContent = e.message; errorEl.hidden = false; }
     else toast(e.message, 'error', 7000);
   }
 }
 
-/** When sign-in fails because the project is not configured, never trap visitors on the gate. */
-function offerGuest(afterEl, code) {
-  if (!SETUP_ERRORS.includes(code) || afterEl.parentElement?.querySelector('.guest-btn')) return;
-  afterEl.after(h('button', { class: 'btn btn-ghost btn-block guest-btn', type: 'button', onclick: () => guest.enter() }, icon('layers'), 'Browse the archive without signing in'));
-}
-
 export function renderGate(root, step) {
-  fill(root, step === 'profile' ? profileCard() : signInCard());
+  fill(root, step === 'profile' ? profileCard() : studentCard());
   root.querySelector('input,button')?.focus();
 }
 
-function signInCard() {
-  const err = h('p', { class: 'form-error', role: 'alert', hidden: !fb.error, text: fb.error || '' });
-  const btn = h('button', { class: 'btn btn-google', type: 'button' });
-  btn.innerHTML = GOOGLE_G;                       // static, trusted markup
-  btn.append(h('span', { text: 'Continue with Google' }));
-  btn.onclick = async () => { btn.disabled = true; err.hidden = true; await startSignIn(err); btn.disabled = false; };
-  if (fb.errorCode) queueMicrotask(() => offerGuest(err, fb.errorCode));
+/** The default way in: name + session + student ID, exactly as on the original site. */
+function studentCard() {
+  const err = h('p', { class: 'form-error', role: 'alert', hidden: true });
+  const name = h('input', { class: 'input', id: 'f-name', name: 'name', autocomplete: 'name', placeholder: 'e.g. Shumsul Arefin', maxlength: 80, required: true });
+  const session = h('select', { class: 'input', id: 'f-session', name: 'session', required: true },
+    h('option', { value: '', text: 'Select your session', disabled: true, selected: true }),
+    Array.from({ length: CONFIG.sessionTo - CONFIG.sessionFrom + 1 }, (_, i) => {
+      const y = CONFIG.sessionTo - i;
+      return h('option', { value: String(y), text: `${y}\u2013${String(y + 1).slice(2)}` });
+    }));
+  const sid = h('input', { class: 'input mono', id: 'f-id', name: 'sid', maxlength: 8, spellcheck: false, autocapitalize: 'characters', inputmode: 'text', placeholder: 'e.g. 20ACE001', required: true });
+  const form = h('form', { class: 'stack', novalidate: true, onsubmit: (e) => {
+    e.preventDefault();
+    const id = sid.value.trim().toUpperCase();
+    const problem = validateStudent(name.value, session.value, id);
+    sid.setAttribute('aria-invalid', problem ? 'true' : 'false');
+    if (problem) { err.textContent = problem; err.hidden = false; return; }
+    const s = student.save(name.value, session.value, id);
+    logVisit(s);
+    window.dispatchEvent(new Event('acce:student'));
+  } },
+  h('div', { class: 'field' }, h('label', { for: 'f-name', text: 'Full name' }), name),
+  h('div', { class: 'student-fields' },
+    h('div', { class: 'field' }, h('label', { for: 'f-session', text: 'Session' }), session),
+    h('div', { class: 'field' }, h('label', { for: 'f-id', text: 'Student ID' }), sid)),
+  err,
+  h('button', { class: 'btn btn-primary btn-block btn-lg', type: 'submit' }, 'Enter the archive'));
+
+  const gErr = h('p', { class: 'form-error', role: 'alert', hidden: !fb.error, text: fb.error || '' });
+  const google = h('button', { class: 'btn btn-google btn-sm', type: 'button' });
+  google.innerHTML = GOOGLE_G;                       // static, trusted markup
+  google.append(h('span', { text: 'Continue with Google' }));
+  google.onclick = async () => {
+    google.disabled = true; gErr.hidden = true;
+    if (await initFirebase()) await startSignIn(gErr);
+    else { gErr.textContent = 'Google sign-in is unavailable right now. Students can enter with their ID above.'; gErr.hidden = false; }
+    google.disabled = false;
+  };
+
   return h('div', { class: 'gate-card glass rise' },
     h('div', { class: 'watermark', 'aria-hidden': 'true' }),
     h('div', { class: 'gate-brand' },
       h('img', { src: 'assets/acce-logo.png', alt: '', width: 56, height: 56 }),
-      h('div', {}, h('span', { class: 'eyebrow', text: 'GSTU · ACCE' }), h('h1', { text: 'The ACCE Archive' }))),
-    h('p', { class: 'gate-sub', text: 'Books, lecture material, question banks and research from the department, kept in one place and growing with every batch.' }),
-    h('ul', { class: 'gate-points' },
-      h('li', {}, icon('search'), 'Search every collection at once'),
-      h('li', {}, icon('upload'), 'Contribute material for review'),
-      h('li', {}, icon('shield'), 'Every upload is checked before it goes public')),
-    err, btn,
-    h('p', { class: 'fine', text: 'We use your Google name and email only to sign you in and to credit your contributions. Nothing is posted to your account.' }));
+      h('div', {}, h('span', { class: 'eyebrow', text: 'GSTU \u00b7 ACCE' }), h('h1', { text: 'The ACCE Archive' }))),
+    h('p', { class: 'gate-sub', text: 'Departmental resources are open to students. Enter your details once on this device.' }),
+    form,
+    h('div', { class: 'gate-alt' },
+      h('span', { class: 'gate-or', text: 'Faculty, staff, or contributing material?' }),
+      gErr, google));
 }
 
 /** Shared by the gate and the profile page. */
@@ -97,7 +123,6 @@ export function profileForm({ onSaved, submitLabel = 'Continue', initial = fb.pr
     } catch (x) {
       err.textContent = 'Could not save your profile: ' + (x.code === 'permission-denied' ? 'details were rejected, check the student ID.' : x.message);
       err.hidden = false;
-      offerGuest(err, x.code);
     } finally { submit.disabled = false; }
   });
   return form;

@@ -2,10 +2,13 @@
    The catalogue (Firestore items/*): the archive's source of truth.
    One record per work, with metadata plus a storage pointer.
 
-   Browsers keep a copy in localStorage and fetch only records changed
-   since their last sync (every write sets updatedAt; removals become
-   status:"withdrawn" rather than deletes), with a full refresh daily.
-   So a visit normally costs a handful of reads, not one per file.
+   Built for the Firestore free tier (50k reads/day). Visitors never
+   read the records one by one: admins publish a *snapshot*, i.e. every
+   published record packed into a few catalogue/{n} documents. A visit
+   costs 1 read (config/catalog), plus the chunks only when the snapshot
+   version changed, plus only the records edited since (every write sets
+   updatedAt; removals are status:"withdrawn" tombstones). Typically 2
+   reads per visit, whatever the size of the archive.
    ============================================================ */
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
@@ -15,11 +18,11 @@ import { getIndex } from './drive.js';
 import { inferMeta } from '../lib/infer.js';
 
 const KEY = 'acce.catalog.v1';
-const FULL_EVERY = 24 * 3600e3;
-const SKEW = 120e3;                         // overlap for client/server clock differences
+const SKEW = 120e3;
+const CHUNK_CHARS = 700_000;                 // keep each snapshot document well under Firestore's 1 MiB                         // overlap for client/server clock differences
 const TIME_FIELDS = ['approvedAt', 'updatedAt', 'withdrawnAt'];
 
-let mem = null;                              // {items: Map<id, item>, syncedAt, fullAt, live}
+let mem = null;                              // {items: Map<id, item>, live, snapVersion, cursor, snapshot}
 let syncing = null;
 let courseMap = null;
 
@@ -30,44 +33,108 @@ function plain(id, data) {
 }
 
 function persist() {
-  if (!store.set(KEY, { items: [...mem.items.values()], syncedAt: mem.syncedAt, fullAt: mem.fullAt, live: mem.live })) store.del(KEY);
+  if (!store.set(KEY, { items: [...mem.items.values()], live: mem.live, snapVersion: mem.snapVersion, cursor: mem.cursor, snapshot: mem.snapshot, courses: mem.courses || [] })) store.del(KEY);
 }
 
 function restore() {
   if (mem) return;
   const c = store.get(KEY);
-  if (c?.items) mem = { items: new Map(c.items.map((i) => [i.id, i])), syncedAt: c.syncedAt || 0, fullAt: c.fullAt || 0, live: !!c.live };
+  if (c?.items) mem = { items: new Map(c.items.map((i) => [i.id, i])), live: !!c.live, snapVersion: c.snapVersion || 0, cursor: c.cursor || 0, snapshot: c.snapshot || null, courses: c.courses || [] };
 }
 
-/** Bring the local copy up to date. Resolves to the Map of all records (any status), or null without Firebase. */
+/**
+ * Bring the local copy up to date. Resolves to the Map of records, or null without Firebase.
+ * full: read every record directly (staff tools only - costs one read per record).
+ */
 export function syncCatalog({ full = false } = {}) {
   if (!fb.ready) return Promise.resolve(null);
   syncing ||= (async () => {
     const F = fs();
     restore();
-    const started = Date.now();
-    // config/catalog.live: staff switch the site to catalogue browsing after the first import,
-    // so a lone approved submission never hides the not-yet-catalogued Drive files.
-    const cfgSnap = await F.getDoc(F.doc(fb.db, 'config', 'catalog')).catch(() => null);
-    const live = !!cfgSnap?.data?.()?.live;
-    if (full || !mem || started - mem.fullAt > FULL_EVERY) {
-      const snap = await F.getDocs(F.collection(fb.db, 'items'));
-      mem = { items: new Map(snap.docs.map((d) => [d.id, plain(d.id, d.data())])), syncedAt: started, fullAt: started, live };
-    } else {
-      let since = F.Timestamp.fromMillis(Math.max(mem.syncedAt - SKEW, 0));
-      for (;;) {
-        const snap = await F.getDocs(F.query(F.collection(fb.db, 'items'), F.where('updatedAt', '>', since), F.orderBy('updatedAt'), F.limit(500)));
-        snap.docs.forEach((d) => mem.items.set(d.id, plain(d.id, d.data())));
-        if (snap.size < 500) break;
-        since = snap.docs[snap.size - 1].data().updatedAt;
+    // config/catalog: live = browse from the catalogue (switched on by the first import, so a lone
+    // approved submission never hides uncatalogued Drive files); snapshot = the published pack.
+    const cfg = (await F.getDoc(F.doc(fb.db, 'config', 'catalog')).catch(() => null))?.data?.() || {};
+    const live = !!cfg.live;
+    const snap = cfg.snapshot ? { version: cfg.snapshot.version, chunks: cfg.snapshot.chunks || 0, builtAt: cfg.snapshot.builtAt?.toMillis?.() || 0, count: cfg.snapshot.count || 0 } : null;
+
+    if (full) {
+      const all = await F.getDocs(F.collection(fb.db, 'items'));
+      mem = { items: new Map(all.docs.map((d) => [d.id, plain(d.id, d.data())])), live, snapVersion: 0, cursor: 0, snapshot: snap, courses: mem?.courses || [] };
+    } else if (!live) {
+      mem = { ...(mem || { items: new Map(), snapVersion: 0, cursor: 0 }), live, snapshot: snap };
+    } else if (snap?.version) {
+      if (!mem || mem.snapVersion !== snap.version) {
+        const docsIn = await Promise.all(Array.from({ length: snap.chunks }, (_, i) => F.getDoc(F.doc(fb.db, 'catalogue', String(i)))));
+        const items = new Map();
+        for (const d of docsIn) for (const it of d.data()?.items || []) items.set(it.id, it);
+        mem = { items, live, snapVersion: snap.version, cursor: snap.builtAt, snapshot: snap, courses: docsIn[0]?.data()?.courses || [] };
+        courseMap = null;
       }
-      mem.syncedAt = started;
-      mem.live = live;
+      // records edited since the snapshot (or since this browser last looked)
+      let since = Math.max((mem.cursor || snap.builtAt) - SKEW, 0);
+      for (;;) {
+        const q = await F.getDocs(F.query(F.collection(fb.db, 'items'), F.where('updatedAt', '>', F.Timestamp.fromMillis(since)), F.orderBy('updatedAt'), F.limit(500)));
+        for (const d of q.docs) { const it = plain(d.id, d.data()); mem.items.set(d.id, it); mem.cursor = Math.max(mem.cursor || 0, it.updatedAt || 0); }
+        if (q.size < 500) break;
+        since = q.docs[q.size - 1].data().updatedAt.toMillis();
+      }
+      mem.live = live; mem.snapshot = snap;
+    } else {
+      // live but no snapshot published yet (only until an admin opens the Catalogue tab)
+      const all = await F.getDocs(F.collection(fb.db, 'items'));
+      mem = { items: new Map(all.docs.map((d) => [d.id, plain(d.id, d.data())])), live, snapVersion: 0, cursor: 0, snapshot: null };
     }
     persist();
     return mem.items;
   })().finally(() => { syncing = null; });
   return syncing;
+}
+
+/** Records changed since the published snapshot (staff: decides when to republish). */
+export function changesSinceSnapshot() {
+  restore();
+  if (!mem) return 0;
+  const built = mem.snapshot?.builtAt || 0;
+  return [...mem.items.values()].filter((i) => (i.updatedAt || 0) > built).length;
+}
+
+export const snapshotInfo = () => mem?.snapshot || null;
+
+/**
+ * Pack every published record into catalogue/{0..n} and point config/catalog at it (admins).
+ * Run after an import, and whenever many records changed since the last one.
+ */
+export async function publishSnapshot() {
+  const F = fs();
+  const items = await syncCatalog({ full: true });
+  const list = [...items.values()].filter((i) => i.status === 'published').map(compact);
+  const chunks = [];
+  let cur = [], size = 0;
+  for (const it of list) {
+    const n = JSON.stringify(it).length;
+    if (cur.length && size + n > CHUNK_CHARS) { chunks.push(cur); cur = []; size = 0; }
+    cur.push(it); size += n;
+  }
+  if (cur.length || !chunks.length) chunks.push(cur);
+  const version = Date.now();
+  // course titles travel in the first chunk, so visitors never read the courses collection
+  const courseList = docs(await F.getDocs(F.collection(fb.db, 'courses'))).map(({ id, title, level, program, active }) => ({ id, title: title || '', level: level || '', program: program || '', active: active !== false }));
+  for (let i = 0; i < chunks.length; i++) await F.setDoc(F.doc(fb.db, 'catalogue', String(i)), i === 0 ? { version, items: chunks[i], courses: courseList } : { version, items: chunks[i] });
+  const old = mem?.snapshot?.chunks || 0;
+  await F.setDoc(F.doc(fb.db, 'config', 'catalog'), {
+    snapshot: { version, chunks: chunks.length, count: list.length, builtAt: F.serverTimestamp() },
+    updatedAt: F.serverTimestamp(), updatedBy: fb.user.email
+  }, { merge: true });
+  for (let i = chunks.length; i < old; i++) await F.deleteDoc(F.doc(fb.db, 'catalogue', String(i))).catch(() => {});
+  await syncCatalog();
+  return { records: list.length, chunks: chunks.length };
+}
+
+/** What visitors need from a record (drops staff bookkeeping to keep the snapshot small). */
+function compact(it) {
+  const { updatedBy, withdrawnReason, withdrawnAt, ...rest } = it;
+  for (const k of Object.keys(rest)) if (rest[k] === '' || rest[k] === null || (Array.isArray(rest[k]) && !rest[k].length)) delete rest[k];
+  return rest;
 }
 
 /** Published records, synced. Empty when Firebase is unavailable or the catalogue is not switched on yet. */
@@ -86,9 +153,16 @@ export async function setCatalogLive(live, extra = {}) {
   if (mem) { mem.live = live; persist(); }
 }
 
-export function catalogStamp() { return mem?.syncedAt || 0; }
+/** Changes whenever the local catalogue does (new snapshot or newer edits); also "last updated" time. */
+export function catalogStamp() { return Math.max(mem?.cursor || 0, mem?.snapshot?.builtAt || 0); }
 
 export function allRecords() { restore(); return mem ? [...mem.items.values()] : []; }
+
+/** Published links filed under a Drive folder, from the local catalogue (no reads). */
+export function linksIn(folderId) {
+  restore();
+  return mem?.live ? [...mem.items.values()].filter((i) => i.kind === 'link' && i.status === 'published' && i.folderId === folderId) : [];
+}
 
 /** The local record for an id, without a network call (null if not catalogued or not synced yet). */
 export function recordFor(id) { restore(); return mem?.items.get(id) || null; }
@@ -110,9 +184,12 @@ export async function saveItem(id, patch) {
   if (mem) { mem.items.set(id, plain(id, s.data())); persist(); }
 }
 
+/** Course titles: from the snapshot when there is one (no reads), else the courses collection. */
 export async function courses() {
   if (courseMap) return courseMap;
-  if (!fb.ready) return (courseMap = new Map());
+  restore();
+  if (mem?.courses?.length) return (courseMap = new Map(mem.courses.map((c) => [c.id, c])));
+  if (!fb.ready || mem?.snapshot) return (courseMap = new Map());
   try {
     const F = fs();
     courseMap = new Map(docs(await F.getDocs(F.collection(fb.db, 'courses'))).map((c) => [c.id, c]));
@@ -211,6 +288,6 @@ export async function importFromDrive(onProgress) {
     onProgress?.({ phase: 'write', done: Math.min(i + 400, writes.length), total: writes.length });
   }
   await setCatalogLive(true, { lastImport: { files: idx.files.length, added, updated, missing } });
-  await syncCatalog({ full: true });
-  return { files: idx.files.length, added, updated, missing };
+  const snap = await publishSnapshot();
+  return { files: idx.files.length, added, updated, missing, snapshot: snap };
 }

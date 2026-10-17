@@ -4,7 +4,8 @@
    ============================================================ */
 import { CONFIG } from './config.js';
 import { $, h, icon, store, toast, initials, fill } from './lib/dom.js';
-import { fb, initFirebase, onSession, signOut, isStaff, getSettings, fs, guest } from './services/firebase.js';
+import { fb, initFirebase, onSession, signOut, isStaff, getSettings, fs, saveProfile } from './services/firebase.js';
+import { student, logVisit } from './services/student.js';
 import { openQuickSearch } from './views/quicksearch.js';
 
 const ROUTES = [
@@ -97,11 +98,7 @@ function drawNav(active) {
 
 function drawAccount() {
   const box = $('#account');
-  if (!fb.ready) { fill(box); return; }
-  if (!fb.user) {
-    fill(box, h('button', { class: 'btn btn-primary btn-sm', type: 'button', onclick: () => import('./views/gate.js').then((g) => g.startSignIn()) }, 'Sign in'));
-    return;
-  }
+  if (!fb.user) return drawStudentAccount(box);
   const name = fb.profile?.displayName || fb.user.displayName || fb.user.email;
   const avatar = fb.user.photoURL
     ? h('img', { src: fb.user.photoURL, alt: '', referrerpolicy: 'no-referrer', onerror: (e) => e.target.replaceWith(h('span', { class: 'avatar-txt', text: initials(name) })) })
@@ -114,6 +111,22 @@ function drawAccount() {
     isStaff() ? h('a', { href: '#/admin', role: 'menuitem' }, icon('shield'), 'Dashboard') : null,
     h('button', { type: 'button', role: 'menuitem', onclick: () => signOut().then(() => toast('Signed out', 'ok')) }, icon('logout'), 'Sign out'));
   const btn = h('button', { class: 'avatar', type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Account menu' }, avatar);
+  const toggle = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+  btn.onclick = (e) => { e.stopPropagation(); toggle(menu.hidden); };
+  closeAccountMenu = (e) => { if (!menu.hidden && !menu.contains(e.target)) toggle(false); };
+  menu.addEventListener('click', (e) => { if (e.target.closest('a,button')) toggle(false); });
+  fill(box, btn, menu);
+}
+
+/** Header menu for a student who came in with their ID (no Google account). */
+function drawStudentAccount(box) {
+  const s = student.get();
+  if (!s) { fill(box); return; }
+  const menu = h('div', { class: 'menu glass', role: 'menu', hidden: true },
+    h('div', { class: 'menu-head' }, h('strong', { text: s.name }), h('span', { text: `${s.sid} \u00b7 session ${s.session}\u2013${String(+s.session + 1).slice(2)}` })),
+    fb.ready ? h('button', { type: 'button', role: 'menuitem', onclick: () => import('./views/gate.js').then((g) => g.startSignIn()) }, icon('upload'), 'Sign in with Google to contribute') : null,
+    h('button', { type: 'button', role: 'menuitem', onclick: () => { student.clear(); decide(); } }, icon('logout'), 'Not you? Change student'));
+  const btn = h('button', { class: 'avatar', type: 'button', 'aria-haspopup': 'menu', 'aria-label': 'Account menu' }, h('span', { class: 'avatar-txt', text: initials(s.name) }));
   const toggle = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
   btn.onclick = (e) => { e.stopPropagation(); toggle(menu.hidden); };
   closeAccountMenu = (e) => { if (!menu.hidden && !menu.contains(e.target)) toggle(false); };
@@ -167,18 +180,23 @@ document.addEventListener('keydown', (e) => {
 $('#search-trigger').addEventListener('click', () => openQuickSearch());
 
 /* ---------- boot ---------- */
+let identity = null;
 function setMode(next) {
   $('#boot')?.remove();
   if (next === 'app') {
+    const who = `${fb.user?.uid || student.get()?.sid || 'anon'}|${fb.role || ''}|${fb.ready}`;
+    if (mode === 'app' && who === identity) return;          // nothing changed: keep the current view
+    identity = who;
     gate.hidden = true; fill(gate);
     app.hidden = false;
     const changed = mode !== 'app';
     mode = 'app';
     drawAccount();
-    if (changed) { showAnnouncement(); }
+    if (changed || fb.ready) showAnnouncement();
     refreshStaffBadge();
     render();
   } else {
+    if (mode === next) return;                               // don't wipe a half-filled form
     mode = next;
     app.hidden = true;
     gate.hidden = false;
@@ -186,20 +204,39 @@ function setMode(next) {
   }
 }
 
+/**
+ * Who gets in:
+ *  - students: name + session + ID on this device (the default, no Google needed)
+ *  - Google accounts (contributors, staff): once they have a profile
+ * A student who later signs in with Google gets their profile filled from their student details.
+ */
+let autoProfiling = false;
 function decide() {
-  if (!fb.ready) return setMode('app');                                 // browse-only fallback
-  if (guest.get() && !fb.profile) return setMode('app');               // sign-in is misconfigured: keep browsing
-  if (!fb.user) return setMode(CONFIG.requireSignIn ? 'signin' : 'app');
-  if (!fb.profile) return setMode('profile');
-  setMode('app');
+  const s = student.get();
+  if (fb.user) {
+    if (fb.profile) return setMode('app');
+    if (s && !autoProfiling) {
+      autoProfiling = true;
+      saveProfile({ displayName: s.name, affiliation: 'student', session: s.session, studentId: s.sid })
+        .catch(() => setMode('profile'))
+        .finally(() => { autoProfiling = false; });
+      return;
+    }
+    if (!autoProfiling) setMode('profile');
+    return;
+  }
+  if (s) { logVisit(s); return setMode('app'); }
+  setMode('student');
 }
 
 window.addEventListener('hashchange', render);
-window.addEventListener('acce:guest', () => decide());
+window.addEventListener('acce:student', () => decide());
 
 (async function boot() {
-  const ready = await Promise.race([initFirebase(), new Promise((r) => setTimeout(() => r(false), 9000))]);
-  if (!ready && fb.error) console.info('Running browse-only:', fb.error);
   onSession(() => decide());
+  // A returning student is let in at once, as on the original site; Firebase loads in the background.
+  // Otherwise give Firebase a moment so signed-in staff don't see the student form flash past.
+  if (!student.get()) await Promise.race([initFirebase(), new Promise((r) => setTimeout(r, 1500))]);
   decide();
+  initFirebase().then((ready) => { if (!ready && fb.error) console.info('Running without Firebase:', fb.error); });
 })();

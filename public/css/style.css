@@ -794,3 +794,8 @@ button.mini-row:hover{background:var(--glass-2)}
 .lg-count{font-size:.76rem; color:var(--muted)}
 .library .result-meta{flex-direction:row; flex-wrap:wrap; justify-content:flex-end; max-width:40%}
 .stack > p{margin:0}
+.gate-alt{display:flex; flex-direction:column; align-items:center; gap:10px; margin-top:20px; padding-top:18px; border-top:1px dashed var(--edge)}
+.gate-or{font-size:.82rem; color:var(--muted)}
+.gate-alt .btn-google{width:auto; padding:9px 18px; font-size:.88rem}
+.gate-alt .form-error{width:100%}
+input.mono::placeholder{text-transform:none; letter-spacing:0; font-weight:400}

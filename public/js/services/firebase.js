@@ -57,7 +57,7 @@ export function initFirebase() {
           if (first) { first = false; resolve(); }
         });
       });
-      A.getRedirectResult(fb.auth).catch((e) => { fb.error = friendlyAuthError(e); fb.errorCode = e.code; emit(); });
+      A.getRedirectResult(fb.auth).catch((e) => { fb.error = friendlyAuthError(e); emit(); });
     } catch (e) {
       console.warn('Firebase unavailable:', e);
       fb.error = e.message;
@@ -111,16 +111,6 @@ export async function signIn() {
 
 export const signOut = () => A.signOut(fb.auth);
 export const idToken = () => fb.user ? fb.user.getIdToken() : Promise.reject(new Error('Please sign in first.'));
-
-/** Errors that mean the Firebase project is not set up yet, rather than anything the visitor did. */
-export const SETUP_ERRORS = ['auth/operation-not-allowed', 'auth/unauthorized-domain', 'auth/configuration-not-found', 'auth/invalid-api-key',
-  'auth/api-key-not-valid.-please-pass-a-valid-api-key.', 'auth/internal-error', 'not-found', 'failed-precondition', 'unavailable'];
-
-/** Visitors can keep browsing (session only) when sign-in is broken by configuration. */
-export const guest = {
-  get: () => { try { return sessionStorage.getItem('acce.guest') === '1'; } catch { return false; } },
-  enter: () => { try { sessionStorage.setItem('acce.guest', '1'); } catch {} window.dispatchEvent(new Event('acce:guest')); }
-};
 
 function friendlyAuthError(e) {
   const map = {

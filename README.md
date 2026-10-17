@@ -12,7 +12,8 @@ Departmental archive for the Department of Applied Chemistry and Chemical Engine
 - **Browse** the original Drive folders as before: breadcrumbs, sorting, filtering, list or grid view, and shareable deep links to any folder or file.
 - **Search everything** at once, instantly, with facets (collection, material type, format, year) and course-code-aware matching. Press <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>K</kbd> anywhere.
 - **Preview** files inline, then download, open in Drive, copy a permalink, copy a citation, or report a problem.
-- **Google sign-in** with a one-time profile (affiliation, session and student ID, validated as before).
+- **Student entry as before:** name + session + student ID, checked on the device, with each visit logged. No Google account needed to browse or download. **Google sign-in** is optional, for contributors and staff; a student who signs in gets their profile filled from their student details.
+- **Free-plan friendly:** files download straight from Google Drive (never through Firebase), and the catalogue is published as a compact snapshot, so a visit costs about 2 Firestore reads. See [docs/STORAGE.md](docs/STORAGE.md#staying-on-the-free-spark-plan).
 - **Contribute:** drag-and-drop batch uploads or links, a guided metadata form, a rights declaration, resumable chunked uploads with progress, and duplicate detection before upload.
 - **Review dashboard:** queue with inline preview, metadata correction, a folder picker with per-course filing suggestions, consistent renaming, approve or decline with a note, and email notices to contributors.
 - **Curation:** edit any catalogue record, take files down, handle reports, keep a course catalogue across curriculum changes, block abusive contributors, and view a full audit log.
