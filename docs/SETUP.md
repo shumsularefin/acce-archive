@@ -19,7 +19,7 @@ Open the [Firebase console](https://console.firebase.google.com/) and select pro
    - **From GitHub Actions:** in Google Cloud console *IAM*, give the service account stored in the `FIREBASE_SERVICE_ACCOUNT_ACCEARCHIVE` secret the roles **Firebase Rules Admin** and **Cloud Datastore Index Admin**. Then add a repository variable `DEPLOY_FIRESTORE` = `true` (*Settings → Secrets and variables → Actions → Variables*). Every push to `main` that changes the rules or indexes will deploy them. You can also run the "Deploy Firestore rules" workflow by hand.
 6. Copy the **Web API key** from *Project settings → General*. Part 2 needs it.
 
-At this point visitors can sign in with Google and complete their profile.
+At this point contributors and staff can sign in with Google. Students never need to: they enter with their name, session and student ID, exactly as on the original site, and each visit is logged in `visitors/{ID}` (Dashboard → People).
 
 ## 2. Submission backend (Google Apps Script)
 

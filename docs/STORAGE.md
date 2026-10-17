@@ -2,6 +2,27 @@
 
 The archive's files live in one personal Google account, which has 15 GB shared with that account's Gmail and Photos. The system is built to stretch that space, warn before it runs out, and move elsewhere without breaking links.
 
+## Staying on the free Spark plan
+
+The site is designed to run indefinitely on Firebase's free **Spark** plan, with all file traffic carried by Google Drive.
+
+| Resource | Free allowance | What uses it here | Typical use |
+|---|---|---|---|
+| **File downloads and previews** | Google Drive (not Firebase) | every download, preview and thumbnail goes straight to `drive.google.com` | **0** Firebase bandwidth, however many GB students download |
+| Hosting transfer | 10 GB / month | the site's own code and logos: about 120 KB gzipped per first visit, then mostly cached | about 80,000 first visits a month before reaching the limit |
+| Firestore reads | 50,000 / day | per visit: `config/catalog` + an empty "changes since" query + settings, about 3 reads; the snapshot chunks (1 per ~1,000 records) only when an admin republishes | about 15,000 visits a day |
+| Firestore writes | 20,000 / day | one visitor-log write per student per browser session; staff edits | plenty |
+| Authentication | free | only contributors and staff use Google sign-in; students don't need accounts | — |
+| Apps Script (uploads) | free with a Google account | runs as the Drive owner | — |
+
+What keeps it cheap:
+- **No downloads through Firebase.** The storage adapter (`public/js/services/storage.js`) resolves Drive files to Drive URLs. If a Cloudflare R2 bucket is ever added, its downloads are free too, because R2 charges no egress.
+- **Catalogue snapshot.** Visitors never read records one by one. Admins publish every record packed into a few `catalogue/{n}` documents (automatically after an import, and whenever more than 25 records have changed). Browsers cache the snapshot and only fetch records edited since.
+- **Course titles travel inside the snapshot**, and links in folders come from the local catalogue, so browsing folders costs no reads.
+- **Small assets.** The logos are trimmed to their displayed size (37 KB in total). Code is plain ES modules that load only when a page needs them.
+
+If the Spark limits are ever reached, Firebase simply refuses the extra reads for the rest of the day; nothing is billed. The site keeps working from each browser's cached catalogue, and Drive browsing never depends on Firebase.
+
 ## What the software already does
 
 | Mechanism | Effect |

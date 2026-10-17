@@ -6,7 +6,7 @@
    ============================================================ */
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
-import { h, icon, fmtSize, fmtDate, relTime, plural, toast, ask, modal, emptyState, skeletonRows, copyText, fill } from '../lib/dom.js';
+import { h, icon, fmtSize, fmtDate, fmtSession, relTime, plural, toast, ask, modal, emptyState, skeletonRows, copyText, fill } from '../lib/dom.js';
 import { fb, fs, docs, isAdmin, isOwner, isRootOwner } from '../services/firebase.js';
 import { call, backendReady } from '../services/backend.js';
 import { listFolder, isFolder, previewUrl, getIndex, cachedIndex, clearListingCache } from '../services/drive.js';
@@ -352,12 +352,20 @@ function reports({ panel, F, add }) {
 
 /* ================= catalogue ================= */
 async function catalogue({ panel }) {
-  const { syncCatalog, allRecords, importFromDrive, toEntry, courses: loadCourses, catalogLive, setCatalogLive } = await import('../services/catalog.js');
+  const { syncCatalog, allRecords, importFromDrive, toEntry, courses: loadCourses, catalogLive, setCatalogLive, publishSnapshot, changesSinceSnapshot, snapshotInfo } = await import('../services/catalog.js');
   const { PROVIDER_LABEL } = await import('../services/storage.js');
   const statsBox = h('div', { class: 'tiles' });
   const out = h('pre', { class: 'console', hidden: true });
   const lists = h('div', { class: 'grid-2 gap' });
   const run = h('button', { class: 'btn btn-primary', type: 'button' }, icon('refresh'), 'Import / sync from Drive');
+  const snapLine = h('p', { class: 'muted small' });
+  const publish = h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => doPublish('Publishing…') }, icon('upload'), 'Publish snapshot');
+  async function doPublish(msg) {
+    publish.disabled = true; out.hidden = false; out.textContent = msg;
+    try { const r = await publishSnapshot(); out.textContent = `Snapshot published: ${r.records} records in ${r.chunks} document${r.chunks === 1 ? '' : 's'}.`; await draw(); }
+    catch (e) { out.textContent = e.code === 'permission-denied' ? 'Only admins can publish (check that the Firestore rules are deployed).' : e.message; }
+    publish.disabled = false;
+  }
   const liveBox = h('input', { type: 'checkbox', onchange: async (e) => {
     try { await setCatalogLive(e.target.checked); toast(e.target.checked ? 'Browsing and search now use the catalogue' : 'Browsing and search use the Drive folders again', 'ok'); }
     catch (x) { e.target.checked = !e.target.checked; toast(x.message, 'error'); }
@@ -368,13 +376,19 @@ async function catalogue({ panel }) {
       h('h2', {}, icon('database'), 'The catalogue is the source of truth'),
       h('p', { class: 'muted small', text: 'Every work has one record with its details and a pointer to where its bytes live (Google Drive today; Cloudflare R2 or an external link work too). Browsing, search and permalinks are built from these records, so re-filing is a metadata edit and files can change storage without breaking links.' }),
       h('p', { class: 'muted small', text: 'Import / sync crawls the public Drive folders: new files get a record with details inferred from their names and folders (marked “needs review”), renamed or moved files are updated, and files gone from Drive are marked missing. Records you have edited are never overwritten. Safe to run any time.' }),
-      h('div', { class: 'row-between' }, h('label', { class: 'check' }, liveBox, h('span', { text: 'Use the catalogue for browsing and search (switched on by the first import)' })), run), out),
+      h('div', { class: 'row-between' }, h('label', { class: 'check' }, liveBox, h('span', { text: 'Use the catalogue for browsing and search (switched on by the first import)' })), run),
+      h('div', { class: 'row-between' }, snapLine, publish),
+      h('p', { class: 'fine', text: 'Visitors read the published snapshot (a few documents) plus records edited since, so a visit costs about 2 Firestore reads however large the archive grows. Republish after big edits; it also happens automatically here when more than 25 records have changed.' }),
+      out),
     statsBox, lists);
 
   async function draw() {
-    await syncCatalog().catch(() => {});
+    await syncCatalog({ full: true }).catch(() => {});
     liveBox.checked = catalogLive();
     const all = allRecords();
+    const info = snapshotInfo(), changed = changesSinceSnapshot();
+    fill(snapLine, info ? `Snapshot: ${info.count} records, published ${relTime(info.builtAt)} \u00b7 ${changed} changed since.` : 'No snapshot published yet.');
+    if (catalogLive() && (!info || changed > 25) && !draw.publishing) { draw.publishing = true; doPublish('Publishing a fresh snapshot…').finally(() => { draw.publishing = false; }); }
     const cmap = await loadCourses();
     const n = (f) => all.filter(f).length;
     const providers = {};
@@ -400,7 +414,7 @@ async function catalogue({ panel }) {
     run.disabled = true; out.hidden = false; out.textContent = 'Crawling the Drive folders…';
     try {
       const r = await importFromDrive((p) => { out.textContent = p.phase === 'crawl' ? `Crawling the Drive folders… ${p.files} files found` : `Writing records… ${p.done}/${p.total}`; });
-      out.textContent = `Done. ${r.files} files in Drive: ${r.added} new records, ${r.updated} updated, ${r.missing} marked missing.`;
+      out.textContent = `Done. ${r.files} files in Drive: ${r.added} new records, ${r.updated} updated, ${r.missing} marked missing. Snapshot published (${r.snapshot.records} records).`;
       toast('Catalogue synced', 'ok');
       draw();
     } catch (e) { out.textContent = e.code === 'permission-denied' ? 'Only admins can write the catalogue (check that the Firestore rules are deployed).' : e.message; }
@@ -472,7 +486,20 @@ function courses({ panel, F, add }) {
 function people({ panel, F, add }) {
   const team = h('div', { class: 'card glass' }, h('h2', {}, icon('shield'), 'Archive team'), ...skeletonRows(3, 2));
   const users = h('div', { class: 'table-card glass' }, ...skeletonRows(6, 4));
-  panel.append(team, h('h2', { class: 'h-sub', text: 'Recent visitors & contributors' }), users);
+  const visitors = h('div', { class: 'table-card glass' }, ...skeletonRows(6, 4));
+  panel.append(team,
+    h('h2', { class: 'h-sub', text: 'Student visitors (entered with their ID)' }), visitors,
+    h('h2', { class: 'h-sub', text: 'Google accounts (contributors & staff)' }), users);
+
+  add(F.onSnapshot(F.query(F.collection(fb.db, 'visitors'), F.orderBy('lastSeen', 'desc'), F.limit(200)), (snap) => {
+    const rows = docs(snap);
+    fill(visitors, rows.length ? h('table', { class: 'data-table' },
+      h('thead', {}, h('tr', {}, ['Name', 'Student ID', 'Session', 'Visits', 'First seen', 'Last seen'].map((t) => h('th', { text: t })))),
+      h('tbody', {}, rows.map((v) => h('tr', {},
+        h('td', { text: v.name }), h('td', { class: 'mono', text: v.studentId }), h('td', { text: fmtSession(v.session) }),
+        h('td', { text: v.visits || 1 }), h('td', { text: fmtDate(v.firstSeen) }), h('td', { text: relTime(v.lastSeen) })))))
+      : emptyState('users', 'No visits logged yet', 'Students appear here after entering with their ID.'));
+  }, (e) => fill(visitors, h('p', { class: 'danger', text: e.message }))));
 
   const ROLES = {
     owner: 'Owner: manages the team and settings, plus everything below',

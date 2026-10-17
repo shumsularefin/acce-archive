@@ -42,7 +42,9 @@ If the archive later moves to Google Workspace (e.g. a GSTU institutional accoun
 | `admins/{email}` | owners (rules), backend (`setAdmin`, `setup()`) | staff; each person their own | `role: reviewer/admin/owner`, `notify`. Permanent owners (`rootOwners` in the rules, config and backend) need no document and cannot be demoted |
 | `submissions/{id}` | backend | the contributor, staff | `status: uploading/pending/approved/rejected/withdrawn/abandoned`, `kind: file/link`, `meta`, `file {name,size,mime,sha256,driveId}`, `published {fileId,folderId,folderPath}`, `reviewer`, `note`, `history[]` |
 | `items/{id}` | backend (approvals), admins (import, edits) | everyone | **the catalogue**: metadata + `storage` pointer + `file {name,size,mime,sha256}` + `status: published/withdrawn/missing` + `curated` + `updatedAt` (drives incremental sync) |
-| `config/catalog` | admins | everyone | `live`: whether browsing and search use the catalogue (set by the first import) |
+| `config/catalog` | admins | everyone | `live`: whether browsing and search use the catalogue (set by the first import); `snapshot {version, chunks, count, builtAt}` |
+| `catalogue/{n}` | admins | everyone | the published snapshot: `items[]` (every published record) and, in `0`, `courses[]` |
+| `visitors/{studentId}` | anyone, shape-checked by the rules | staff | student visit log from the entry form: name, session, first/last seen, visits |
 | `courses/{CODE-1234}` | admins | everyone | course catalogue: title, level, programme, curricula, instructors over time, `active`, last-used filing folders |
 | `reports/{id}` | signed-in users (create) | staff, the reporter | problems and take-down requests |
 | `fingerprints/{sha256}` | backend | staff | duplicate detection, for both legacy and submitted files |
@@ -76,7 +78,7 @@ items/{id}  ──  title, course, level, session, curricula[], type, teacher, �
 - **Virtual browsing (`#/library/…`).** Levels are generated from metadata: by default *collection → year/term → course → material type*; Question banks use *exam year → course → exam*. Change the levels in `CONFIG.library`. A curriculum filter (`?cur=Syllabus 2019`) shows only works tagged with that curriculum. One work tagged with two curricula appears under both, stored once.
 - **Storage adapter (`public/js/services/storage.js`).** Every preview, download and "open" link is resolved through it. Adding a provider means adding one `case`. Drive and plain URLs are used today; R2 is supported for reading via `CONFIG.storage.r2PublicBase`.
 - **Import / sync from Drive (Dashboard → Catalogue).** Crawls the public folders and creates a record for each new file. Its details are inferred from the file name and folders (`lib/infer.js`: course code, year/term, exam year and kind, material type, curriculum) and marked `curated: false` ("needs review"). It refreshes file facts for known files without overwriting staff edits, and marks vanished files `missing`. The first import sets `config/catalog.live`; until then the site browses the Drive folders, so a single approved submission can never hide uncatalogued files.
-- **Cheap sync.** Browsers keep the catalogue in `localStorage` and query only `updatedAt > lastSync`, with a full refresh daily. Withdrawals are tombstones (`status: withdrawn`), never deletes, so every cached copy learns about them.
+- **Snapshot sync, built for the free tier.** Admins publish every published record packed into a few `catalogue/{n}` documents, with course titles in the first one. This happens automatically after an import and when more than 25 records changed. Visitors read `config/catalog`, fetch the chunks only when the snapshot version changes, and then query only records with `updatedAt` after the snapshot (or after their last look). A visit is about 2 reads regardless of archive size. Withdrawals are tombstones (`status: withdrawn`), never deletes, so every cached copy learns about them. Staff tools read records directly.
 - **Permalinks (`#/file/<id>`)** point at the record, so they survive moves between folders and providers.
 
 **Moving files to another provider later** (for example R2) is a copy plus a record update: write the object, set `storage` to `{provider: 'r2', key}`, and keep the SHA-256 to verify the copy. Nothing else changes. Uploads still go to Drive through the Apps Script backend; a direct-to-R2 upload path (a small Cloudflare Worker issuing signed upload URLs) is the natural next step.
@@ -93,7 +95,7 @@ The Drive-crawl fallback reads nothing from Firestore except published links. Th
 
 ## Security summary
 
-- **Identity:** Google sign-in only. The backend re-verifies every ID token with Identity Toolkit and requires a verified email.
+- **Identity:** students enter with name, session and student ID, checked in the browser as on the original site; this gates browsing only, which was never secret because the Drive folders are public. Anything that writes (contributions, reviews, curation, team) needs Google sign-in; the backend re-verifies every ID token with Identity Toolkit and requires a verified email.
 - **Authorisation:** roles live in `admins/{email}`. The rules and the backend both check them. Owners can be bootstrapped from the `OWNER_EMAILS` script property.
 - **Validation:** the backend trusts the file extension map, not the browser's MIME type. It enforces size limits, rate limits (open submissions per person, per day) and a storage reserve. It also sanitises file names and checks lengths and enums on every field.
 - **Containment:** writes go only into folders whose parent chain reaches a configured collection root, or into the private system folders.

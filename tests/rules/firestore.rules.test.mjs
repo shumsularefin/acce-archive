@@ -146,3 +146,24 @@ test('reports: signed-in users file them, staff resolve them', async () => {
   await assertFails(updateDoc(doc(as('r', 'rev@gmail.com'), 'reports/r1'), { fileId: 'other' }));
   await assertSucceeds(updateDoc(doc(as('r', 'rev@gmail.com'), 'reports/r1'), { status: 'resolved', resolution: 'fixed', resolvedBy: 'rev@gmail.com', resolvedAt: serverTimestamp() }));
 });
+
+test('students log visits without an account; only staff read the log', async () => {
+  const visit = (sid, extra = {}) => ({ name: 'Rahim Uddin', session: '2019', studentId: sid, firstSeen: new Date(), lastSeen: serverTimestamp(), visits: 1, device: 'Mozilla/5.0', ...extra });
+  await assertSucceeds(setDoc(doc(anon(), 'visitors/19ACE021'), visit('19ACE021')));
+  await assertFails(setDoc(doc(anon(), 'visitors/not-an-id'), visit('not-an-id')));
+  await assertFails(setDoc(doc(anon(), 'visitors/19ACE022'), visit('19ACE099')), 'document id must be the student id');
+  await assertFails(setDoc(doc(anon(), 'visitors/19ACE023'), visit('19ACE023', { role: 'owner' })));
+  await assertFails(setDoc(doc(anon(), 'visitors/19ACE024'), visit('19ACE024', { lastSeen: new Date(2001, 1, 1) })));
+  await assertFails(getDoc(doc(anon(), 'visitors/19ACE021')));
+  await assertFails(getDocs(collection(as('alice', 'alice@gmail.com'), 'visitors')));
+  await assertSucceeds(getDocs(collection(as('r', 'rev@gmail.com'), 'visitors')));
+});
+
+test('the catalogue snapshot is public to read and written by admins only', async () => {
+  await assertSucceeds(getDoc(doc(anon(), 'catalogue/0')));
+  await assertFails(setDoc(doc(anon(), 'catalogue/0'), { items: [] }));
+  await assertFails(setDoc(doc(as('r', 'rev@gmail.com'), 'catalogue/0'), { items: [] }));
+  await assertFails(setDoc(doc(as('a', 'adm@gmail.com'), 'catalogue/evil'), { items: [] }));
+  await assertSucceeds(setDoc(doc(as('a', 'adm@gmail.com'), 'catalogue/0'), { version: 1, items: [{ id: 'x', title: 'T' }] }));
+  await assertSucceeds(setDoc(doc(as('a', 'adm@gmail.com'), 'config/catalog'), { snapshot: { version: 1, chunks: 1, count: 1, builtAt: serverTimestamp() }, updatedAt: serverTimestamp(), updatedBy: 'adm@gmail.com' }, { merge: true }));
+});

@@ -5,10 +5,10 @@
 import { CONFIG } from '../config.js';
 import { h, icon, fmtSize, fmtDate, plural, store, toast, skeletonRows, emptyState, ask, fill } from '../lib/dom.js';
 import { listFolder, folderMeta, isFolder, downloadUrl, cachedIndex, clearListingCache, kindOf } from '../services/drive.js';
-import { linkItemsIn, isAdmin } from '../services/firebase.js';
+import { isAdmin } from '../services/firebase.js';
 import { call, backendReady } from '../services/backend.js';
 import { openPreview, fileIcon } from './preview.js';
-import { recordFor, toEntry, syncCatalog } from '../services/catalog.js';
+import { recordFor, toEntry, syncCatalog, linksIn } from '../services/catalog.js';
 
 let sort = store.get('acce.sort', { key: 'name', dir: 1 });
 
@@ -55,9 +55,10 @@ export async function render({ root, params, query, navigate }) {
     count.textContent = '';
     if (fresh) clearListingCache();
     try {
-      const [files, links] = await Promise.all([listFolder(here, { fresh }), linkItemsIn(here)]);
+      const [files] = await Promise.all([listFolder(here, { fresh }), syncCatalog().catch(() => {})]);
+      const links = linksIn(here);
       if (!alive) return;
-      rows = [...files, ...links.map((l) => ({ ...l, kind: 'link', name: l.title, mimeType: 'link', modifiedTime: l.approvedAt?.toDate?.().toISOString() }))];
+      rows = [...files, ...links.map((l) => ({ ...l, kind: 'link', name: l.title, mimeType: 'link', modifiedTime: l.approvedAt ? new Date(l.approvedAt).toISOString() : '' }))];
       paint();
       const want = query.get('file');
       const target = want && rows.find((r) => r.id === want);
@@ -159,7 +160,6 @@ export async function render({ root, params, query, navigate }) {
     else location.hash = back.getAttribute('href');
   };
   document.addEventListener('keydown', onKey);
-  syncCatalog().catch(() => {});   // so previews can show catalogue records
   load();
   return () => { alive = false; document.removeEventListener('keydown', onKey); };
 }

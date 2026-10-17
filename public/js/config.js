@@ -45,9 +45,6 @@ export const CONFIG = {
   // Recognised course-code prefixes, used to infer metadata for files imported from Drive.
   coursePrefixes: ['ACCE', 'ACE', 'CHE', 'CHEM', 'MATH', 'PHY', 'PHYS', 'EEE', 'CSE', 'ME', 'STAT', 'ENG', 'HUM', 'ECO', 'BIO', 'GED', 'BAN'],
 
-  // Visitors must sign in with Google before browsing. Browsing still works if Firebase is unreachable.
-  requireSignIn: true,
-
   idPattern: /^(\d{2})ACE0(\d{2})$/,   // 20ACE001
   sessionFrom: 2015,
   sessionTo: new Date().getFullYear(),

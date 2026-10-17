@@ -7,6 +7,7 @@ import { h, icon, fmtSize, relTime, plural, fill } from '../lib/dom.js';
 import { getIndex, cachedIndex } from '../services/drive.js';
 import { loadCatalog, catalogStamp, courses, toEntry } from '../services/catalog.js';
 import { fb } from '../services/firebase.js';
+import { student } from '../services/student.js';
 import { openPreview, fileIcon } from './preview.js';
 
 const COLLECTION_UI = {
@@ -18,7 +19,7 @@ const COLLECTION_UI = {
 
 export function render({ root, navigate }) {
   let alive = true;
-  const first = (fb.profile?.displayName || fb.user?.displayName || '').split(' ')[0];
+  const first = (fb.profile?.displayName || fb.user?.displayName || student.get()?.name || '').split(' ')[0];
 
   const q = h('input', { class: 'hero-input', type: 'search', placeholder: 'Search books, courses, question papers…', 'aria-label': 'Search the archive', enterkeyhint: 'search' });
   const form = h('form', { class: 'hero-search glass', role: 'search', onsubmit: (e) => { e.preventDefault(); navigate(`#/search?q=${encodeURIComponent(q.value.trim())}`); } },

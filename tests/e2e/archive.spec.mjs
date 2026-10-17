@@ -77,22 +77,42 @@ test.beforeAll(async () => {
   h.ctx.fsSet_('courses/ACCE-1101', { code: 'ACCE-1101', title: 'Chemical Engineering Thermodynamics', program: 'bsc', level: '1-1', active: true });
 });
 
-test('student signs in, completes profile, browses, searches and previews', async ({ page }) => {
+async function enterAsStudent(page, name = 'Alice Rahman', session = '2020', sid = '20ACE004') {
+  await page.locator('#f-name').fill(name);
+  await page.locator('#f-session').selectOption(session);
+  await page.locator('#f-id').fill(sid);
+  await page.getByRole('button', { name: 'Enter the archive' }).click();
+}
+
+test('student enters with name, session and ID (no Google), browses, searches and previews', async ({ page }) => {
   await wire(page);
   await page.goto('/');
-  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();
+  await expect(page.locator('#f-id')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible();   // optional, for staff
   await shot(page, '01-gate');
 
-  await signIn(page, { sub: 'alice', email: 'alice@gmail.com', email_verified: true, name: 'Alice Rahman' });
-  await expect(page.getByRole('heading', { name: /Welcome, Alice/ })).toBeVisible();
+  // the original validation rules
   await page.getByRole('button', { name: 'Enter the archive' }).click();
-  await expect(page.locator('.form-error')).toContainText('No session selected');
-  await page.locator('#p-session').selectOption('2020');
-  await page.locator('#p-sid').fill('21ACE004');
+  await expect(page.locator('.gate-card form .form-error')).toContainText('too short');
+  await page.locator('#f-name').fill('Alice Rahman');
   await page.getByRole('button', { name: 'Enter the archive' }).click();
-  await expect(page.locator('.form-error')).toContainText('does not belong to the selected session');
-  await page.locator('#p-sid').fill('20ACE004');
+  await expect(page.locator('.gate-card form .form-error')).toContainText('No session selected');
+  await page.locator('#f-session').selectOption('2020');
+  await page.locator('#f-id').fill('21ace004');
   await page.getByRole('button', { name: 'Enter the archive' }).click();
+  await expect(page.locator('.gate-card form .form-error')).toContainText('does not belong to the selected session');
+  await page.locator('#f-id').fill('20ACE000');
+  await page.getByRole('button', { name: 'Enter the archive' }).click();
+  await expect(page.locator('.gate-card form .form-error')).toContainText('serial number');
+  await page.locator('#f-id').fill('20ace004');
+  await page.getByRole('button', { name: 'Enter the archive' }).click();
+  await expect(page.locator('.eyebrow', { hasText: 'Welcome back, Alice' })).toBeVisible();
+
+  // logged once in Firestore visitors/{ID}; returning visits go straight in
+  await expect.poll(() => h.ctx.fsGet_('visitors/20ACE004')?.name).toBe('Alice Rahman');
+  await page.reload();
+  await expect(page.locator('.hero-title')).toBeVisible();
+  await expect(page.locator('#f-id')).toHaveCount(0);
 
   await expect(page.locator('.hero-title')).toBeVisible();
   await expect(page.locator('.stats')).toContainText('files');
@@ -147,8 +167,12 @@ test('student signs in, completes profile, browses, searches and previews', asyn
 test('student contributes a file; duplicate is refused', async ({ page }) => {
   await wire(page);
   await page.goto('/#/submit');
-  await signIn(page, { sub: 'alice', email: 'alice@gmail.com', email_verified: true, name: 'Alice Rahman' });
+  await enterAsStudent(page);
+  await expect(page.getByRole('heading', { name: 'Sign in to continue' })).toBeVisible();   // contributing needs Google
+  // signing in with Google fills the profile from the student details: no second form
+  await signIn(page, { sub: 'alice', email: 'alice@gmail.com', email_verified: true, name: 'Alice R.' });
   await expect(page.getByRole('heading', { name: 'Add to the archive' })).toBeVisible();
+  expect(h.ctx.fsQuery_('users', [['email', '==', 'alice@gmail.com']])[0]).toMatchObject({ displayName: 'Alice Rahman', studentId: '20ACE004', affiliation: 'student' });
 
   const pdf = Buffer.alloc(5 * 1024 * 1024 + 4321, 7);     // two chunks
   await page.locator('input[type=file]').setInputFiles({ name: 'mass_transfer_notes.pdf', mimeType: 'application/pdf', buffer: pdf });
@@ -306,6 +330,22 @@ test('permanent owner builds the team, imports the catalogue and browses it virt
   await expect(page.locator('.result')).toHaveCount(1);
   await expect(page.locator('.result')).toContainText('Syllabus 2019');
 
+  // visitors read the published snapshot, not one document per record
+  expect(h.ctx.fsGet_('catalogue/0').items.length).toBe(11);
+  expect(h.ctx.fsGet_('config/catalog').snapshot.chunks).toBe(1);
+  const visitor = await page.context().browser().newContext();
+  const vp = await visitor.newPage();
+  await wire(vp);
+  await vp.goto('/');
+  await enterAsStudent(vp, 'Karim Hasan', '2021', '21ACE010');
+  await expect(vp.locator('.program-box[data-key="qbank"]')).toHaveAttribute('href', '#/library/qbank');
+  await vp.locator('.program-box[data-key="qbank"]').click();
+  await expect(vp.locator('.lib-group', { hasText: '2023' })).toBeVisible();
+  const cached = await vp.evaluate(() => JSON.parse(localStorage.getItem('acce.catalog.v1')));
+  expect(cached.snapVersion).toBeTruthy();
+  expect(cached.courses.map((c) => c.id)).toContain('ACCE-1101');
+  await visitor.close();
+
   // search runs on the catalogue; permalinks resolve through it
   await page.goto('/#/search?q=acce3101');
   await expect(page.locator('.result').first()).toContainText('Chemical Reaction Engineering term final');
@@ -314,11 +354,12 @@ test('permanent owner builds the team, imports the catalogue and browses it virt
   await expect(page.locator('dialog.modal-preview')).toBeVisible();
 });
 
-test('without Firebase the archive still browses (graceful fallback)', async ({ page }) => {
+test('without Firebase students still get in and browse (graceful fallback)', async ({ page }) => {
   page.on('pageerror', (e) => { throw e; });
   await page.route('**/__/firebase/init.json', (r) => r.fulfill({ status: 404, body: '' }));
   await page.route('https://www.googleapis.com/drive/v3/**', driveApi);
   await page.goto('/');
+  await enterAsStudent(page, 'Rahim Uddin', '2019', '19ACE021');
   await expect(page.locator('.hero-title')).toBeVisible();
   await page.locator('.program-box[data-key="qbank"]').click();
   await expect(page.locator('.dir-table')).toContainText('2023');
