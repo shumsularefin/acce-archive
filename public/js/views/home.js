@@ -58,7 +58,7 @@ export function render({ root, navigate }) {
       h('div', { class: 'card glass' },
         h('div', { class: 'section-head tight' }, h('h2', {}, icon('sparkle'), 'Recently added'), h('a', { class: 'link', href: '#/search?sort=new', text: 'See all' })),
         recent),
-      h('div', { class: 'card contribute-card' },
+      h('div', { class: 'card glass contribute-card' },
         h('h2', {}, icon('upload'), 'Help the archive grow'),
         h('p', { text: 'Have notes, slides, a question paper or a thesis the next batch should have? Upload it with your Google account. A reviewer checks every submission before it goes public.' }),
         h('ol', { class: 'steps' },

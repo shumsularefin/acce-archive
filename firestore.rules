@@ -50,6 +50,8 @@ service cloud.firestore {
         && validProfile(request.resource.data)
         && request.resource.data.get('status', null) == resource.data.get('status', null)
         && request.resource.data.createdAt == resource.data.createdAt;
+      // owners may delete a profile made by mistake; people may delete their own
+      allow delete: if isOwner() || (signedIn() && request.auth.uid == uid);
       // staff may only block / unblock contributors
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
