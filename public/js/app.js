@@ -262,5 +262,7 @@ window.addEventListener('acce:student', () => decide());
   // Otherwise give Firebase a moment so signed-in staff don't see the student form flash past.
   if (!student.get()) await Promise.race([initFirebase(), new Promise((r) => setTimeout(r, 1500))]);
   decide();
+  // returning students: load the Firebase SDK once the first page has painted, so it never competes with it
+  if (student.get()) await new Promise((r) => (window.requestIdleCallback || setTimeout)(r, { timeout: 2000 }));
   initFirebase().then((ready) => { if (!ready && fb.error) console.info('Running without Firebase:', fb.error); });
 })();

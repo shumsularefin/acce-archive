@@ -4,7 +4,7 @@
 import { CONFIG } from '../config.js';
 import { TAXONOMY } from '../taxonomy.js';
 import { h, icon, fmtSize, relTime, plural, fill } from '../lib/dom.js';
-import { getIndex, cachedIndex } from '../services/drive.js';
+import { getIndex, cachedIndex, listFolder } from '../services/drive.js';
 import { loadCatalog, catalogStamp, courses, toEntry } from '../services/catalog.js';
 import { fb } from '../services/firebase.js';
 import { student } from '../services/student.js';
@@ -101,6 +101,9 @@ export function render({ root, navigate }) {
     const files = items.map((i) => toEntry(i, cmap));
     paint({ catalog: true, files, t: catalogStamp(), courses: new Set(items.map((i) => i.courseCode).filter(Boolean)).size });
   }).catch(fromDrive);
+  // warm the collection listings while the visitor reads, so opening one is instant
+  const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1200));
+  idle(() => { if (alive) Object.values(CONFIG.folders).forEach((f) => listFolder(f.id).catch(() => {})); });
   return () => { alive = false; };
 }
 
