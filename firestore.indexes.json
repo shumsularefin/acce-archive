@@ -1,0 +1,17 @@
+{
+  "indexes": [
+    { "collectionGroup": "submissions", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "uid", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" } ] },
+    { "collectionGroup": "submissions", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "uid", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "ASCENDING" } ] },
+    { "collectionGroup": "submissions", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "uid", "order": "ASCENDING" }, { "fieldPath": "status", "order": "ASCENDING" } ] },
+    { "collectionGroup": "submissions", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" } ] },
+    { "collectionGroup": "reports", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "status", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" } ] },
+    { "collectionGroup": "items", "queryScope": "COLLECTION",
+      "fields": [ { "fieldPath": "kind", "order": "ASCENDING" }, { "fieldPath": "folderId", "order": "ASCENDING" } ] }
+  ],
+  "fieldOverrides": []
+}

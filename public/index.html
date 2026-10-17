@@ -4,18 +4,80 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#06231b">
-<meta name="description" content="Academic paper, book and question bank archive - Department of Applied Chemistry and Chemical Engineering, GSTU.">
+<meta name="description" content="Departmental archive of books, lecture material, question banks and research - Department of Applied Chemistry and Chemical Engineering, GSTU.">
+<meta property="og:title" content="ACCE Archive · GSTU">
+<meta property="og:description" content="Books, lecture material, question banks and research for Applied Chemistry & Chemical Engineering, GSTU.">
+<meta property="og:image" content="assets/acce-logo.png">
 <title>ACCE Archive · GSTU</title>
 
 <link rel="preconnect" href="https://www.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="dns-prefetch" href="https://firestore.googleapis.com">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚗️</text></svg>">
-<link rel="stylesheet" href="style.css">
-<script src="app.js" defer></script>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="css/style.css">
+<script>try{var t=localStorage.getItem('acce.theme');if(t){try{t=JSON.parse(t)}catch(e){}if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}}catch(e){}</script>
+<script type="module" src="js/app.js"></script>
 </head>
 <body>
 
-<!-- background: hex lattice + column silhouette + bubbles -->
+<!-- icon sprite -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M6 2.8h8.5L19 7.3V21H6z"/><path d="M14.2 2.8v4.6H19"/></symbol>
+  <symbol id="i-pdf" viewBox="0 0 24 24"><path d="M6 2.8h8.5L19 7.3V21H6z"/><path d="M14.2 2.8v4.6H19"/><path d="M9 12.5h6M9 16h4"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 2.8h8.5L19 7.3V21H6z"/><path d="M14.2 2.8v4.6H19"/><path d="M9 11h6M9 14h6M9 17h3.5"/></symbol>
+  <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/></symbol>
+  <symbol id="i-slides" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="m21 16-5-5-9 9"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10.5A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V9"/><path d="M10 13h4"/></symbol>
+  <symbol id="i-audio" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="14" height="14" rx="2"/><path d="m17 10 4-2.5v9L17 14"/></symbol>
+  <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 7-5 5 5 5M16 7l5 5-5 5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1.2 1.2"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1.2-1.2"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V16"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3.5A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5V16"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m9 12 2 2 4-4"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.3c1.8.9 3 2.9 3 5.7"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 8l-4 4 4 4M6 12h10"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2 2.2.8-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M3 13l2.5-8h13L21 13v6.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5z"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13"/><path d="M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 7V4.5h4V7M6 7l1 13.5h10L18 7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4.5L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.5 4.5L20 16"/><path d="M20 20v-4h-4"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5.5A1.5 1.5 0 0 0 14.5 4h-9A1.5 1.5 0 0 0 4 5.5v9A1.5 1.5 0 0 0 5.5 16H8"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7.5a4 4 0 0 1 8 0V11"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M3 5.2c2.7-.8 5.3-.8 8 0v14c-2.7-.8-5.3-.8-8 0z"/><path d="M21 5.2c-2.7-.8-5.3-.8-8 0v14c2.7-.8 5.3-.8 8 0z"/><path d="M12 5.2v14"/></symbol>
+  <symbol id="i-cap" viewBox="0 0 24 24"><path d="M12 3.5 22 8l-10 4.5L2 8z"/><path d="M6 10.2V15c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.8"/><path d="M22 8v5.5"/></symbol>
+  <symbol id="i-question" viewBox="0 0 24 24"><path d="M6 2.8h8.5L19 7.3V21H6z"/><path d="M14.2 2.8v4.6H19"/><path d="M10.2 11.3c0-1 .8-1.8 1.8-1.8s1.8.8 1.8 1.8c0 1.3-1.8 1.4-1.8 2.7"/><path d="M12 17.2h.01"/></symbol>
+  <symbol id="i-flask" viewBox="0 0 24 24"><path d="M10 3v5.4L4.9 17c-.8 1.4.2 3.1 1.8 3.1h10.6c1.6 0 2.6-1.7 1.8-3.1L14 8.4V3"/><path d="M8.6 3h6.8"/><path d="M7.2 14.2h9.6"/></symbol>
+</svg>
+
+<!-- background: hex lattice + bubbles -->
 <div class="bg" aria-hidden="true">
   <svg class="bg-lattice" xmlns="http://www.w3.org/2000/svg">
     <defs>
@@ -29,109 +91,60 @@
   <div class="bubbles"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
 </div>
 
-<!-- ============ AUTH GATE ============ -->
-<div id="gate" class="gate" role="dialog" aria-modal="true" aria-labelledby="gate-title">
-  <form id="gate-form" class="gate-card glass" novalidate>
-    <div class="watermark" aria-hidden="true"></div>
-    <h1 id="gate-title">Sign in to the archive</h1>
-    <p class="gate-sub">Departmental resources are open to enrolled students. Your entry is recorded once.</p>
-
-    <label for="f-name">Full name</label>
-    <input id="f-name" name="name" type="text" autocomplete="name" placeholder="e.g. Shumsul Arefin" required>
-
-    <label for="f-session">Session</label>
-    <select id="f-session" name="session" required>
-      <option value="" selected disabled>Select your session</option>
-    </select>
-
-    <label for="f-id">Student ID</label>
-    <input id="f-id" name="sid" type="text" inputmode="text" spellcheck="false"
-           autocapitalize="characters" maxlength="8" required>
-
-    <p class="gate-error" id="gate-error" role="alert" hidden></p>
-    <button type="submit" class="btn-primary">Enter archive</button>
-  </form>
+<div id="boot" class="boot" aria-live="polite">
+  <div class="boot-mark"><img src="assets/acce-logo.png" alt="" width="72" height="72"></div>
+  <p>Opening the archive…</p>
 </div>
 
-<!-- ============ APP ============ -->
+<div id="gate" class="gate" hidden></div>
+
 <div id="app" class="app" hidden>
-<header class="site-head glass">
-  <div class="brand">
-    <img src="assets/gstu-logo.png" alt="Gopalganj Science and Technology University" class="crest" onerror="this.remove()">
-    <div class="brand-text">
-      <h1>Applied Chemistry &amp; Chemical Engineering</h1>
-      <p>Gopalganj Science and Technology University · departmental archive</p>
-    </div>
-  </div>
-  <div class="head-tools">
-    <button id="theme-btn" class="icon-btn" type="button" title="Switch to light view" aria-label="Switch theme">◐</button>
-    <button id="user-chip" class="user-chip" type="button" title="Sign out">
-      <span id="user-initials">--</span><span id="user-name">Guest</span>
+  <a class="skip" href="#view">Skip to content</a>
+  <header class="site-head glass">
+    <a class="brand" href="#/" aria-label="ACCE Archive home">
+      <img src="assets/gstu-logo.png" alt="" class="crest" onerror="this.remove()">
+      <div class="brand-text">
+        <strong>ACCE Archive</strong>
+        <span>Applied Chemistry &amp; Chemical Engineering · GSTU</span>
+      </div>
+    </a>
+
+    <button id="search-trigger" class="search-trigger" type="button" aria-label="Search the archive">
+      <svg class="ic" aria-hidden="true"><use href="#i-search"/></svg>
+      <span>Search the archive</span>
+      <kbd>/</kbd>
     </button>
-  </div>
-</header>
 
-<main>
-  <!-- landing -->
-  <section id="landing-view">
-    <div class="watermark watermark-page" aria-hidden="true"></div>
-    <div class="landing-intro">
-      <h2>Choose any collection</h2>
-    </div>
-    <div class="shelf">
-      <button class="program-box" data-key="bsc">
-        <svg class="pb-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.2c2.7-.8 5.3-.8 8 0v14c-2.7-.8-5.3-.8-8 0z"/><path d="M21 5.2c-2.7-.8-5.3-.8-8 0v14c2.7-.8 5.3-.8 8 0z"/><path d="M12 5.2v14"/></svg>
-        <h2>BSc archive</h2>
-        <p>Course books, lecture material and papers for the undergraduate programme.</p>
-      </button>
-      <button class="program-box" data-key="msc">
-        <svg class="pb-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5 22 8l-10 4.5L2 8z"/><path d="M6 10.2V15c0 1.7 2.7 3 6 3s6-1.3 6-3v-4.8"/><path d="M22 8v5.5"/></svg>
-        <h2>MSc archive</h2>
-        <p>Thesis work, advanced texts and graduate coursework.</p>
-      </button>
-      <button class="program-box" data-key="qbank">
-        <svg class="pb-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2.8h8.5L19 7.3V21H6z"/><path d="M14.2 2.8v4.6H19"/><path d="M10.2 11.3c0-1 .8-1.8 1.8-1.8s1.8.8 1.8 1.8c0 1.3-1.8 1.4-1.8 2.7"/><path d="M12 17.2h.01"/></svg>
-        <h2>Question banks</h2>
-        <p>Term finals, incourse and viva questions sorted by year.</p>
-      </button>
-      <button class="program-box" data-key="misc">
-        <svg class="pb-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v5.4L4.9 17c-.8 1.4.2 3.1 1.8 3.1h10.6c1.6 0 2.6-1.7 1.8-3.1L14 8.4V3"/><path d="M8.6 3h6.8"/><path d="M7.2 14.2h9.6"/></svg>
-        <h2>Miscellaneous</h2>
-        <p>Forms, notices, software, lab manuals and everything else.</p>
-      </button>
-    </div>
-  </section>
+    <nav class="main-nav" id="main-nav" aria-label="Main"></nav>
 
-  <!-- browser -->
-  <section id="browser-view" hidden>
-    <div class="browser-bar glass">
-      <button class="back-btn" id="back-btn" type="button">← Back</button>
-      <nav id="crumbs" class="crumbs" aria-label="Folder path"></nav>
-      <input id="filter" class="filter" type="search" placeholder="Filter this folder" aria-label="Filter files in this folder">
+    <div class="head-tools">
+      <button id="theme-btn" class="icon-btn" type="button" aria-label="Switch theme">
+        <svg class="ic" aria-hidden="true"><use href="#i-moon"/></svg>
+      </button>
+      <div class="account" id="account"></div>
     </div>
+  </header>
 
-    <div class="table-wrap glass">
-      <table id="dir-table">
-        <thead>
-          <tr>
-            <th><button type="button" class="sort-btn" data-sort="name" aria-sort="ascending">Name</button></th>
-            <th class="col-date"><button type="button" class="sort-btn" data-sort="date">Modified</button></th>
-            <th class="col-size"><button type="button" class="sort-btn" data-sort="size">Size</button></th>
-          </tr>
-        </thead>
-        <tbody id="file-list"></tbody>
-      </table>
-      <p id="status" class="status-msg" hidden></p>
+  <div id="announce" class="announce" hidden></div>
+
+  <main id="view" tabindex="-1"></main>
+
+  <footer class="site-foot">
+    <div class="foot-cols">
+      <div>
+        <strong>ACCE Archive</strong>
+        <p>Department of Applied Chemistry and Chemical Engineering, Gopalganj Science and Technology University.</p>
+      </div>
+      <nav aria-label="Footer">
+        <a href="#/about">About &amp; policies</a>
+        <a href="#/about#takedown">Report or take-down</a>
+        <a href="#/submit">Contribute material</a>
+      </nav>
     </div>
-    <p id="count" class="count-line"></p>
-  </section>
-</main>
+    <p class="foot-legal">© 2026 Shumsul Arefin · Materials remain the property of their authors and are shared for educational use.</p>
+  </footer>
 
-<footer class="site-foot">
-  <span>Department of Applied Chemistry and Chemical Engineering, GSTU</span>
-  <span class="foot-dot" aria-hidden="true">·</span>
-  <span>© 2026 Shumsul Arefin</span>
-</footer>
+  <nav class="tabbar" id="tabbar" aria-label="Quick navigation"></nav>
 </div>
 </body>
 </html>

@@ -1,0 +1,28 @@
+# Deploys firestore.rules and firestore.indexes.json.
+# Opt-in: set the repository variable DEPLOY_FIRESTORE=true after granting the
+# Hosting service account "Firebase Rules Admin" and "Cloud Datastore Index Admin" (docs/SETUP.md §1.5).
+name: Deploy Firestore rules
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [firestore.rules, firestore.indexes.json]
+permissions:
+  contents: read
+jobs:
+  deploy:
+    if: ${{ vars.DEPLOY_FIRESTORE == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Deploy rules and indexes
+        env:
+          SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_ACCEARCHIVE }}
+        run: |
+          printf '%s' "$SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx --yes firebase-tools@13 deploy --only firestore --project accearchive --non-interactive
+          rm -f "$RUNNER_TEMP/sa.json"

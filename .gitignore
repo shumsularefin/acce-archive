@@ -67,3 +67,9 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Emulators and tests
+firestore-debug.log
+ui-debug.log
+test-results/
+playwright-report/
